@@ -444,7 +444,6 @@ protected:
 };
 
 #endif // IGAMESYSTEM_H
-=======
 //========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
