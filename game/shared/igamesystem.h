@@ -13,6 +13,9 @@
 
 #include "network_connection.pb.h"
 #include "iloopmode.h"
+#include "entityhandle.h"
+#include "entity2/entityidentity.h"
+#include "tier1/utlstring.h"
 
 /*
 * AMNOTE: To create your own gamesystem, you need to inherit from CBaseGameSystem or CAutoGameSystem,
@@ -220,8 +223,7 @@ GS_EVENT_MSG( ClientPostAdvanceTick ) {};
 GS_EVENT_MSG( ServerPreBeginAsyncPostTickWork ) {};
 GS_EVENT_MSG( ServerBeginAsyncPostTickWork )
 {
-	// AMNOTE: Also is set on gpGlobals->m_unk301
-	bool m_unk001;
+	bool m_bIsOncePerFrameAsyncWorkPhase;
 };
 
 GS_EVENT_MSG( ServerPreEndAsyncPostTickWork ) {};
