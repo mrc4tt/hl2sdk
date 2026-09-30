@@ -28,11 +28,7 @@
 #include "playerslot.h"
 #include <iloopmode.h>
 #include "network_connection.pb.h"
-<<<<<<< HEAD
 #include "entity2/entityidentity.h"
-=======
-#include "entity2/entityidentity.h"
->>>>>>> upstream/cs2
 #include "checktransmitinfo.h"
 #include "networksystem/inetworksystem.h"
 
