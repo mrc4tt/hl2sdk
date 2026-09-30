@@ -125,6 +125,9 @@ public:
 
 	virtual CLoggingSystem::LoggingChannel_t *GetLoggingChannel() = 0;
 
+	virtual void unk201() = 0;
+	virtual void unk202() = 0;
+
 	virtual ~INetworkMessages() = 0;
 };
 

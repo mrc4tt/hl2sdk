@@ -120,12 +120,8 @@ public:
 	virtual void	MakeSpawnGroupActive( SpawnGroupHandle_t ) = 0;
 	virtual void	SynchronouslySpawnGroup( SpawnGroupHandle_t ) = 0;
 
-	virtual void	SetServerState( server_state_t eNewState ) = 0
-	virtual void	unk101() = 0;;
 	virtual void	SetServerState( server_state_t eNewState ) = 0;
 	virtual server_state_t GetServerState( void ) = 0;
-	virtual void	SetServerState( server_state_t eNewState ) = 0;
-	virtual void	unk101() = 0;
 	virtual void	SpawnServer( const char * ) = 0;
 
 	virtual int 	GetSpawnGroupLoadingStatus( SpawnGroupHandle_t ) = 0;

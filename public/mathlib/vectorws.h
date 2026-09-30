@@ -11,7 +11,14 @@
 // most likely meaning of it is world space vector
 class VectorWS : public Vector
 {
+public:
 	using Vector::Vector;
+
+	// A using-declaration never inherits the base's copy constructor, so
+	// VectorWS( someVector ) - which variant.h does with vec3_origin - needs
+	// this one spelled out, and declaring it takes the implicit default away.
+	VectorWS() = default;
+	VectorWS( const Vector &v ) : Vector( v ) {}
 };
 
 #endif // VECTORWS_H
