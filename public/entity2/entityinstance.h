@@ -19,6 +19,7 @@ class IRestore;
 struct CEntityPrecacheContext;
 struct ChangeAccessorFieldPathIndexInfo_t;
 struct datamap_t;
+struct ScriptClassDesc_t;
 
 struct NetworkStateChangedData
 {
@@ -73,7 +74,7 @@ public:
 	virtual void unk001() = 0;
 	virtual void unk002() = 0;
 
-	virtual void* GetScriptDesc() = 0;
+	virtual ScriptClassDesc_t* GetScriptDesc() = 0;
 	
 	virtual ~CEntityInstance() = 0;
 	
@@ -133,6 +134,8 @@ public:
 	virtual void unk501() = 0;
 	virtual void unk502() = 0;
 	virtual void unk503() = 0;
+
+	virtual void Pulse_OnDynamicAttributeChanged() = 0;
 
 	virtual void ReloadPrivateScripts() = 0;
 	virtual datamap_t* GetDataDescMap() = 0;

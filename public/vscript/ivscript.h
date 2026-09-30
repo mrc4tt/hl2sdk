@@ -166,7 +166,7 @@ DECLARE_POINTER_HANDLE( HSCRIPT );
 
 #include "variant.h"
 
-typedef uint8 ScriptDataType_t;
+typedef fieldtype_t ScriptDataType_t;
 typedef CVariant ScriptVariant_t;
 
 #define SCRIPT_VARIANT_NULL ScriptVariant_t()
@@ -235,11 +235,14 @@ enum ScriptFuncBindingFlags_t
 	SF_MEMBER_FUNC	= 0x01,
 };
 
+struct ScriptClassDesc_t;
+
 typedef bool (*ScriptBindingFunc_t)( void *pFunction, void *pContext, ScriptVariant_t *pArguments, int nArguments, ScriptVariant_t *pReturn );
 
 struct ScriptFunctionBinding_t
 {
 	ScriptFuncDescriptor_t	m_desc;
+    ScriptClassDesc_t      *m_pClassDesc;
 	ScriptBindingFunc_t		m_pfnBinding;
 	void *					m_pFunction;
 	unsigned				m_flags;
@@ -490,7 +493,7 @@ public:
 	template <typename T> HSCRIPT RegisterInstance( T *pInstance, const char *pszInstance, HSCRIPT hScope = NULL)					{ HSCRIPT hInstance = RegisterInstance( GetScriptDesc( pInstance ), pInstance ); SetValue( hScope, pszInstance, hInstance ); return hInstance; }
 	virtual void RemoveInstance( HSCRIPT ) = 0;
 	void RemoveInstance( HSCRIPT hInstance, const char *pszInstance, HSCRIPT hScope = NULL )										{ ClearValue( hScope, pszInstance ); RemoveInstance( hInstance ); }
-	void RemoveInstance( const char *pszInstance, HSCRIPT hScope = NULL )															{ ScriptVariant_t val; if ( GetValue( hScope, pszInstance, &val ) ) { if ( val.m_type == FIELD_HSCRIPT ) { RemoveInstance( val, pszInstance, hScope ); } ReleaseValue( val ); } }
+	void RemoveInstance( const char *pszInstance, HSCRIPT hScope = NULL )															{ ScriptVariant_t val; if ( GetValue( hScope, pszInstance, &val ) ) { if ( val.GetType() == FIELD_HSCRIPT ) { RemoveInstance( val, pszInstance, hScope ); } ReleaseValue( val ); } }
 
 	virtual void *GetInstanceValue( HSCRIPT hInstance, ScriptClassDesc_t *pExpectedType = NULL ) = 0;
 
