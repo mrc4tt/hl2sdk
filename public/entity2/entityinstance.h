@@ -133,7 +133,6 @@ public:
 	
 	virtual void unk501() = 0;
 	virtual void unk502() = 0;
-	virtual void unk503() = 0;
 
 	virtual void Pulse_OnDynamicAttributeChanged() = 0;
 

@@ -492,11 +492,11 @@ public:
 	virtual void			unk_076() = 0;
 	virtual void			unk_077() = 0;
 	virtual void			unk_078() = 0;
+	virtual void			unk_079() = 0;
 	virtual void			BroadcastServerFrameTime() = 0;
-	virtual void			unk_080() = 0;
 	virtual void			unk_081() = 0;
+	virtual void			unk_082() = 0;
 	virtual void			GetEntityReport() = 0;
-	virtual void			unk_083() = 0;
 	virtual void			unk_084() = 0;
 	virtual void			unk_085() = 0;
 	virtual void			unk_086() = 0;
@@ -512,6 +512,10 @@ public:
 	virtual void			unk_096() = 0;
 	virtual void			unk_097() = 0;
 	virtual void			unk_098() = 0;
+	virtual void			unk_099() = 0;
+	virtual void			unk_100() = 0;
+	virtual void			unk_101() = 0;
+	virtual void			unk_102() = 0;
 };
 
 //-----------------------------------------------------------------------------
