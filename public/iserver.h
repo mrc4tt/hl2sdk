@@ -45,7 +45,6 @@ class CSVCMsg_ServerInfo_t;
 class CServerSideClientBase;
 class C2S_CONNECT_Message;
 class CMsgVoiceAudio;
-class ns_address;
 
 typedef int ChallengeType_t;
 typedef int PauseGroup_t;
@@ -99,7 +98,7 @@ public:
 	// returns the game time scale (multiplied in conjunction with host_timescale)
 	virtual float	GetTimescale( void ) const = 0;
 
-	virtual bool	IsSaveRestoreAllowed( void ) const = 0;
+	virtual bool	IsSaveRestoreAllowed( CUtlString *pReason ) const = 0;
 
 	virtual void	SetMapName( const char *pszNewName ) = 0;
 	// current map name (BSP)
@@ -234,28 +233,27 @@ public:
 	virtual bool	IsServerRunning( void ) const = 0;
 	virtual void	DisconnectGameNow( /*ENetworkDisconnectionReason*/ int ) = 0;
 	virtual void	PrintSpawnGroupStatus( void ) const = 0;
-	virtual void	SetFinalSimulationTickThisFrame( int ) = 0;
-	virtual void	*GetGameServer( void ) = 0;
 	//virtual int		GetTickInterval( void ) const = 0;
 	//virtual void	ProcessSocket( void ) = 0;
-	virtual int		GetServerNetworkAddress( void ) = 0;
+	virtual netadr_t GetServerNetworkAddress( void ) = 0;
 	virtual bool	GameLoadFailed( void ) const = 0;
 	virtual void	SetGameLoadFailed( bool bFailed ) = 0;
 	virtual void	SetGameLoadStarted( void ) = 0;
-	virtual void	unk_18019F5B0( void ) = 0;
-	virtual void	StartChangeLevel( void ) = 0;
+	virtual void	StartChangeLevel( const char *, const char *pszLandmark, void * ) = 0;
+	virtual bool	FinishChangeLevel( void ) = 0;
+	virtual bool	IsChangelevelPending( void ) const = 0;
 	virtual void	PreserveSteamID( void ) = 0;
 	virtual CRC32_t	GetServerSerializersCRC( void ) = 0;
 	virtual void	*GetServerSerializersMsg( void ) = 0;
-	// CNetworkServerService appends 8 concrete-only virtual slots (indices 43-50) beyond the abstract interface.
-	virtual void	unk_043( void ) = 0;
-	virtual void	unk_044( void ) = 0;
-	virtual void	unk_045( void ) = 0;
-	virtual void	unk_046( void ) = 0;
-	virtual void	unk_047( void ) = 0;
-	virtual void	unk_048( void ) = 0;
-	virtual void	unk_049( void ) = 0;
-	virtual void	unk_050( void ) = 0;
+	virtual IGameSpawnGroupMgr *GetGameSpawnGroupMgr( void ) = 0;
+	virtual bool	IsSaveRestoreAllowed( CUtlString *pReason ) = 0;
+	virtual bool	unk101( void ) = 0;
+	virtual void	*unk102( int ) = 0;
+	virtual void	unk103( void ) = 0;
+	virtual void	unk104( void ) = 0;
+	virtual bool	unk105( void ) = 0;
+	virtual void	unk106( void ) = 0;
+	virtual void	unk107( bool ) = 0;
 };
 
 typedef CNetworkGameServerBase IServer;

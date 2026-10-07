@@ -1,0 +1,15 @@
+# vim: set ts=8 sts=2 sw=2 tw=99 et ft=python:
+import os
+
+# Output matches the repository's lib folder
+builder.SetBuildFolder('lib')
+
+folder_map = {}
+for task in HL2SDK.libs:
+  if task.target.platform == 'windows':
+    folder = os.path.join('public', 'win64')
+  else:
+    folder = 'linux64'
+  if folder not in folder_map:
+    folder_map[folder] = builder.AddFolder(folder)
+  builder.AddCopy(task.binary, folder_map[folder])

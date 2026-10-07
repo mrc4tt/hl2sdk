@@ -21,4 +21,10 @@ public:
 	VectorWS( const Vector &v ) : Vector( v ) {}
 };
 
+class QuaternionWS : public Quaternion
+{
+public:
+	using Quaternion::Quaternion;
+};
+
 #endif // VECTORWS_H

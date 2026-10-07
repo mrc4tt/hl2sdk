@@ -31,6 +31,7 @@
 #include "entity2/entityidentity.h"
 #include "checktransmitinfo.h"
 #include "networksystem/inetworksystem.h"
+#include "resourcefile/resourcetype.h"
 
 //-----------------------------------------------------------------------------
 // forward declarations
@@ -70,8 +71,6 @@ struct Entity2Networkable_t;
 class CCreateGameServerLoadInfo;
 class INavListener;
 class CNavData;
-struct EconItemInfo_t;
-struct EconControlPointInfo_t;
 class CEntityHandle;
 struct RenderDeviceInfo_t;
 
@@ -95,6 +94,8 @@ struct vis_info_t;
 class IHLTVServer;
 class CCompressedResourceManifest;
 class ILoadingSpawnGroup;
+class KeyValues3;
+struct SaveGameParams_t;
 class IToolGameSimulationAPI;
 class CCLCMsg_Move;
 template <typename T>
@@ -159,14 +160,14 @@ public:
 	// What is the game timescale multiplied with the host_timescale?
 	virtual float		GetTimescale( void ) const = 0;
 
-	virtual void		*FindOrCreateWorldSession( const char *pszWorldName, CResourceManifestPrerequisite * ) = 0;
+	virtual void		*FindOrCreateWorldSession( const char *pszWorldName, CResourceManifestPrerequisite *, void * ) = 0;
 
-	virtual CEntityLump	*GetEntityLumpForTemplate( const char *, bool, const char *, const char * ) = 0;
+	virtual CEntityLump	*GetEntityLumpForTemplate( const char *, bool, const char *, const char *, bool ) = 0;
 
 	virtual uint32		GetStatsAppID() const = 0;
 
-	virtual void		*UnknownFunc1(const char *pszFilename, void *pUnknown1, void *pUnknown2, void *pUnknown3) = 0;
-	virtual void		UnknownFunc2() = 0;
+	virtual void		*UnknownFunc1( const char *pszFilename, int, int, int, bool ) = 0;
+	virtual void		UnknownFunc2( void *, void * ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -187,11 +188,11 @@ public:
 	virtual void		SetFrameTimeAmnesty( const char *amnesty, int, float frametime ) = 0;
 	virtual const char *GetFrameTimeAmnesty( bool check_cvar ) = 0;
 
-	virtual void		unk101() = 0;
+	virtual void		unk101( const char *, int, int, float ) = 0;
 
-	virtual void		ShowFrameTimeReport( void *, bool ) = 0;
+	virtual void		ShowFrameTimeReport( void *, bool, LoggingChannelID_t channel = -1 ) = 0;
 
-	virtual void		DumpNetStats( void *, void * ) = 0;
+	virtual void		DumpNetStats( void *, void (*pfnPrint)( const char * ) ) = 0;
 
 	virtual void		unk201() = 0;
 	virtual void		unk202() = 0;
@@ -253,12 +254,12 @@ public:
 	virtual bool		IsLogEnabled() = 0;
 
 	virtual bool IsSplitScreenPlayer( CPlayerSlot nSlot ) = 0;
-	virtual edict_t *GetSplitScreenPlayerAttachToEdict( CPlayerSlot nSlot ) = 0;
-	virtual int	GetNumSplitScreenUsersAttachedToEdict( CPlayerSlot nSlot ) = 0;
-	virtual edict_t *GetSplitScreenPlayerForEdict( CPlayerSlot nSlot, int nSplitScreenSlot ) = 0;
+	virtual CPlayerSlot GetSplitScreenPlayerAttachToEdict( CPlayerSlot nSlot ) = 0;
+	virtual CPlayerSlot GetSplitScreenPlayerForEdict( CPlayerSlot nSlot, int nSplitScreenSlot ) = 0;
 
 	// Ret types might be all wrong for these. Haven't researched yet.
 	virtual void	UnloadSpawnGroup( SpawnGroupHandle_t spawnGroup, /*ESpawnGroupUnloadOption*/ int) = 0;
+	virtual SpawnGroupHandle_t LoadSpawnGroup( const SpawnGroupDesc_t & ) = 0;
 	virtual void	SetSpawnGroupDescription( SpawnGroupHandle_t spawnGroup, const char *pszDescription ) = 0;
 	virtual bool	IsSpawnGroupLoaded( SpawnGroupHandle_t spawnGroup ) const = 0;
 	virtual bool	IsSpawnGroupLoading( SpawnGroupHandle_t spawnGroup ) const = 0;
@@ -323,7 +324,7 @@ public:
 	virtual void P2PGroupChanged() = 0;
 #endif
 
-	virtual void unk301() = 0;
+	virtual void DisconnectAllClients( ENetworkDisconnectionReason reason ) = 0;
 	virtual void unk302() = 0;
 	
 	// Use these to setup who can hear whose voice.
@@ -458,64 +459,29 @@ public:
 	virtual void			PreFatalShutdown( void ) const = 0;
 	virtual void			UpdateWhenNotInGame( float flFrameTime ) = 0;
 
-	// CSource2Server primary vtable slots 46-98 are only partially identified.
-	virtual void			unk_046() = 0;
+	virtual void			*GetEconItemSystem( void ) = 0;
+
 	virtual void			ServerConVarChanged( const char *pVarName, const char *pValue ) = 0;
-	virtual void			unk_048() = 0;
-	virtual void			unk_049() = 0;
-	virtual void			unk_050() = 0;
-	virtual void			unk_051() = 0;
-	virtual void			GetLevelsFromSaveFile( const char *pFileName, CUtlVector<CCreateGameServerLoadInfo> &loadInfo, bool bUnknown ) = 0;
-	virtual void			unk_053() = 0;
-	virtual void			unk_054() = 0;
-	virtual void			unk_055() = 0;
-	virtual void			unk_056() = 0;
-	virtual void			Save() = 0;
-	virtual void			unk_058() = 0;
-	virtual void			unk_059() = 0;
-	virtual void			unk_060() = 0;
-	virtual void			unk_061() = 0;
-	virtual void			unk_062() = 0;
-	virtual void			unk_063() = 0;
-	virtual void			unk_064() = 0;
-	virtual void			unk_065() = 0;
-	virtual void			unk_066() = 0;
-	virtual void			unk_067() = 0;
-	virtual void			unk_068() = 0;
-	virtual void			unk_069() = 0;
-	virtual void			unk_070() = 0;
-	virtual void			unk_071() = 0;
-	virtual void			unk_072() = 0;
-	virtual void			unk_073() = 0;
-	virtual void			unk_074() = 0;
-	virtual void			unk_075() = 0;
-	virtual void			unk_076() = 0;
-	virtual void			unk_077() = 0;
-	virtual void			unk_078() = 0;
-	virtual void			unk_079() = 0;
-	virtual void			BroadcastServerFrameTime() = 0;
-	virtual void			unk_081() = 0;
-	virtual void			unk_082() = 0;
-	virtual void			GetEntityReport() = 0;
-	virtual void			unk_084() = 0;
-	virtual void			unk_085() = 0;
-	virtual void			unk_086() = 0;
-	virtual void			unk_087() = 0;
-	virtual void			unk_088() = 0;
-	virtual void			unk_089() = 0;
-	virtual void			unk_090() = 0;
-	virtual void			unk_091() = 0;
-	virtual void			unk_092() = 0;
-	virtual void			unk_093() = 0;
-	virtual void			unk_094() = 0;
-	virtual void			unk_095() = 0;
-	virtual void			unk_096() = 0;
-	virtual void			unk_097() = 0;
-	virtual void			unk_098() = 0;
-	virtual void			unk_099() = 0;
-	virtual void			unk_100() = 0;
-	virtual void			unk_101() = 0;
-	virtual void			unk_102() = 0;
+
+	// Returns a list of values and names corresponding to HitGroup_t enum
+	virtual void			GetHitGroupEnumInfo( CUtlVector<int> &values, CUtlVector<CUtlString> &names ) = 0;
+
+	virtual void			unk_101( KeyValues3 *pKV ) = 0;
+
+	virtual bool			unk_102( const char *pszSaveName, CUtlString &fileName ) = 0;
+	virtual bool			unk_103( const char *pszSaveName, CUtlString &requiredAddons ) = 0;
+	virtual void			GetLevelsFromSaveFile( const char *pszSaveName, CUtlVector<CCreateGameServerLoadInfo> &levels, bool bWipeAndExtract, int, CUtlString *pComment ) = 0;
+	virtual void			unk_201( void ) = 0;
+	virtual void			PreSaveGameLoaded( const char *pszSaveName ) = 0;
+	virtual void			AppendSaveGameResources( HGameResourceManifest hManifest, ILoadingSpawnGroup *pLoadingSpawnGroup, SpawnGroupHandle_t hSpawnGroup, const void * ) = 0;
+	virtual void			AppendTransitionResources( HGameResourceManifest hManifest, ILoadingSpawnGroup *pLoadingSpawnGroup, SpawnGroupHandle_t hSpawnGroup, const void * ) = 0;
+	virtual /*SaveGameResult_t*/ int SaveGame( const SaveGameParams_t &params ) = 0;
+	virtual bool			unk_301( void ) = 0;
+	virtual bool			unk_302( void ) = 0;
+	virtual bool			unk_303( void ) = 0;
+	virtual void			FinishAsyncSave( void ) = 0;
+
+	virtual const char		*GetEntityUniqueHammerID( CEntityIndex nEntityIndex ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -552,7 +518,7 @@ public:
 	
 	virtual bool			GetWorldspaceCenter( CEntityIndex nEntityIndex, Vector *pCenter ) const = 0;
 
-	virtual void			OnPrePackEntities( CUtlVector<Entity2Networkable_t *> ents ) const = 0;
+	virtual void			OnPrePackEntities( const CUtlVector<Entity2Networkable_t *> &ents ) const = 0;
 };
 
 #define INTERFACEVERSION_SERVERCONFIG			"Source2ServerConfig001"
@@ -694,6 +660,8 @@ public:
 	virtual void			unk201() = 0;
 	virtual void			unk202() = 0;
 	virtual void			unk203() = 0;
+	virtual bool			unk204( const char *, CBufferString * ) = 0;
+	virtual bool			unk205( CPlayerSlot, int ) = 0;
 };
 
 typedef IVEngineServer2 IVEngineServer;

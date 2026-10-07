@@ -1,0 +1,120 @@
+# vim: set ts=2 sw=2 tw=99 noet ft=python:
+import os
+from ambuild2 import util
+
+class SDKConfig(object):
+  def __init__(self):
+    self.libs = []
+    self.targets = []
+
+    if builder.options.targets:
+      target_archs = builder.options.targets.split(',')
+    else:
+      target_archs = ['x86_64']
+
+    for arch in target_archs:
+      cxx = builder.DetectCxx(target_arch = arch)
+      self.targets.append(cxx)
+
+  @property
+  def tag(self):
+    if builder.options.debug == '1':
+      return 'Debug'
+    return 'Release'
+
+  def configure_cxx(self, cxx):
+    if cxx.like('gcc'):
+      self.configure_gcc(cxx)
+    elif cxx.family == 'msvc':
+      self.configure_msvc(cxx)
+
+    # Optimization
+    if builder.options.opt == '1':
+      cxx.defines += ['NDEBUG']
+
+    # Debugging
+    if builder.options.debug == '1':
+      cxx.defines += ['DEBUG', '_DEBUG']
+
+    cxx.defines += ['X64BITS', 'PLATFORM_64BITS', '_LIB']
+
+    # Platform-specifics
+    if cxx.target.platform == 'linux':
+      self.configure_linux(cxx)
+    elif cxx.target.platform == 'windows':
+      self.configure_windows(cxx)
+
+  def configure_gcc(self, cxx):
+    cxx.cflags += [
+      '-Wall',
+      '-Wno-overloaded-virtual',
+      '-Wno-non-virtual-dtor',
+      '-Wno-delete-non-virtual-dtor',
+      '-Wno-invalid-offsetof',
+      '-Wno-unknown-pragmas',
+      '-Wno-unused',
+      '-Wno-narrowing',
+      '-Wno-register',
+      '-fno-strict-aliasing',
+      '-fPIC'
+    ]
+
+    cxx.defines += [
+      'COMPILER_GCC'
+    ]
+
+    cxx.cxxflags += [
+      '-std=c++17'
+    ]
+
+    if builder.options.opt == '1':
+      cxx.cflags += ['-O3']
+
+  def configure_msvc(self, cxx):
+    cxx.defines += ['COMPILER_MSVC', 'COMPILER_MSVC64']
+
+    cxx.cxxflags += [
+      '/std:c++17'
+    ]
+
+    if builder.options.opt == '1':
+      cxx.cflags += ['/Ox', '/Zo']
+
+  def configure_linux(self, cxx):
+    cxx.defines += ['_LINUX', 'LINUX', 'POSIX', 'GNUC']
+    cxx.cflags += ['-march=nocona', '-mmmx', '-msse', '-msse2']
+
+    # Set of defines required by the HL2SDK
+    cxx.defines += [
+      '_finite=finite',
+      'stricmp=strcasecmp', '_stricmp=strcasecmp',
+      'strnicmp=strncasecmp', '_strnicmp=strncasecmp',
+      'strcmpi=strcasecmp',
+      '_vsnprintf=vsnprintf',
+      '_alloca=alloca',
+      'NO_MALLOC_OVERRIDE'
+    ]
+
+  def configure_windows(self, cxx):
+    cxx.defines += ['_WINDOWS', 'WINDOWS', 'WIN32', 'WIN64', '_CRT_SECURE_NO_DEPRECATE', '_CRT_NONSTDC_NO_DEPRECATE']
+
+  def configure(self):
+    for cxx in self.targets:
+      self.configure_cxx(cxx)
+
+  def ConfigureLibrary(self, project, compiler, context):
+    binary = project.Configure(compiler, project.name, '{0} - {1}'.format(self.tag, compiler.target.arch))
+    binary.compiler.cxxincludes += [
+      os.path.join(context.sourcePath, 'public'),
+      os.path.join(context.sourcePath, 'public', 'tier0'),
+      os.path.join(context.sourcePath, 'public', 'tier1')
+    ]
+    return binary
+
+HL2SDK = SDKConfig()
+HL2SDK.configure()
+
+BuildScripts = ['interfaces/AMBuilder', 'mathlib/AMBuilder', 'PackageScript']
+# Turn off the 'lib' prefix for all platform, we will add it if we need to
+util.StaticLibPrefix = ''
+builder.Build(BuildScripts, { 'HL2SDK': HL2SDK })

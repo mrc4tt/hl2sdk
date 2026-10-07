@@ -348,7 +348,7 @@ public:
 	GS_EVENT_IMPL( ServerPostAdvanceTick )					// 39
 	GS_EVENT_IMPL( ClientPostAdvanceTick )					// 40
 
-	GS_EVENT_IMPL( ServerPreBeginAsyncPostTickWork )		// 42
+	GS_EVENT_IMPL( ServerPreBeginAsyncPostTickWork )		// 41
 	GS_EVENT_IMPL( ServerBeginAsyncPostTickWork )			// 42
 	GS_EVENT_IMPL( ServerPreEndAsyncPostTickWork )			// 43
 	GS_EVENT_IMPL( ServerPostEndAsyncPostTickWork )			// 44
@@ -387,10 +387,10 @@ public:
 
 // Quick and dirty server system for users who don't care about precise ordering
 // and usually only want to implement a few of the callbacks
-class CBaseGameSystem : public IGameSystem
+class CAutoGameSystem : public IGameSystem
 {
 public:
-	CBaseGameSystem(const char* pszInitName = "unnamed")
+	CAutoGameSystem(const char* pszInitName = "unnamed")
 	 :  m_pName(pszInitName)
 	{
 	}
@@ -490,16 +490,13 @@ public:
 	virtual void SetGameSystemGlobalPtrs(void* pValue) override {}
 	virtual void SetName(const char* pName) override { m_pName = pName; }
 	virtual bool DoesGameSystemReallocate() override { return false; }
-	virtual ~CBaseGameSystem() {}
+	virtual ~CAutoGameSystem() {}
 
 private:
 	const char* m_pName;
 };
 
-class CAutoGameSystem : public CBaseGameSystem
-{
-protected:
-	virtual ~CAutoGameSystem() {};
-};
+// AMNOTE: Deprecated, use CAutoGameSystem instead
+using CBaseGameSystem = CAutoGameSystem;
 
 #endif // IGAMESYSTEM_H

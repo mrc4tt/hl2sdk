@@ -98,10 +98,11 @@ public:
 	virtual void AssociateNetMessageGroupIdWithChannelCategory(NetworkCategoryId nCategoryId, char const *szGroup) = 0;
 
 	virtual void SetNetworkSerializationContextData(char const *szContext, NetworkSerializationMode_t, void *) = 0;
-	virtual void *GetNetworkSerializationContextData(char const *szContext) = 0;
+	virtual uint16 GetNetworkSerializationContextData(char const *szContext) = 0;
 
-	virtual void unk101() = 0;
-	virtual void unk102() = 0;
+	// AMNOTE: Returns the data SetNetworkSerializationContextData set
+	virtual void *unk101(uint16 hContext, NetworkSerializationMode_t mode) = 0;
+	virtual void unk102(const void *) = 0;
 
 	// Doesn't support duplicated callbacks per field
 	virtual void RegisterNetworkFieldChangeCallbackInternal(char const *szFieldName, uint64, NetworkFieldChangedDelegateType_t fieldType, CUtlAbstractDelegate pCallback, NetworkFieldChangeCallbackPerformType_t cbPerformType, int unkflag ) = 0;
@@ -123,10 +124,10 @@ public:
 
 	virtual int ComputeOrderForPriority(int nPriority) = 0;
 
-	virtual CLoggingSystem::LoggingChannel_t *GetLoggingChannel() = 0;
+	virtual LoggingChannelID_t GetLoggingChannel() = 0;
 
-	virtual void unk201() = 0;
-	virtual void unk202() = 0;
+	virtual void unk201(const void *) = 0;
+	virtual void *unk202() = 0;
 
 	virtual ~INetworkMessages() = 0;
 };

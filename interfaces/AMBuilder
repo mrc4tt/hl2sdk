@@ -1,0 +1,14 @@
+# vim: set ts=2 sw=2 tw=99 noet ft=python:
+import os
+
+builder.SetBuildFolder('/')
+
+project = builder.StaticLibraryProject('interfaces')
+project.sources = [
+	'interfaces.cpp',
+]
+
+for cxx in HL2SDK.targets:
+  HL2SDK.ConfigureLibrary(project, cxx, builder)
+
+HL2SDK.libs += builder.Add(project)

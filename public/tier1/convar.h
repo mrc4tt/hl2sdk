@@ -26,6 +26,7 @@
 #include "Color.h"
 #include "vectorws.h"
 #include "playerslot.h"
+#include "schemasystem/schematypes.h"
 
 #include <cstdint>
 #include <cinttypes>
@@ -37,6 +38,8 @@ class CCommand;
 class ConCommand;
 class CCommandContext;
 class ConVarRefAbstract;
+
+typedef uint8 *ConVarUserInfoSet_t;
 
 struct CSplitScreenSlot
 {
@@ -616,20 +619,20 @@ class CConVar;
 template <typename T>
 using FnTypedChangeCallback_t = void(*)(CConVar<T> *cvar, CSplitScreenSlot nSlot, const T *pNewValue, const T *pOldValue);
 template <typename T>
-using FnTypedChangeCallbackProvider_t = void(*)(CConVar<T> *cvar, CSplitScreenSlot slot, const T *pNewValue, const T *pOldValue, void *__unk01, FnTypedChangeCallback_t<T> cb);
+using FnTypedChangeCallbackProvider_t = void(*)(CConVar<T> *cvar, CSplitScreenSlot slot, const T *pNewValue, const T *pOldValue, ConVarUserInfoSet_t *userinfo_data, FnTypedChangeCallback_t<T> cb);
 
 using FnGenericChangeCallback_t = void(*)(ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue);
-using FnGenericChangeCallbackProvider_t = void(*)(ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, void *__unk01, FnGenericChangeCallback_t cb);
+using FnGenericChangeCallbackProvider_t = void(*)(ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, ConVarUserInfoSet_t *userinfo_data, FnGenericChangeCallback_t cb);
 
 template <typename T>
 using FnTypedFilterCallback_t = bool(*)(CConVar<T> *cvar, CSplitScreenSlot nSlot, const T *pNewValue, const T *pOldValue);
 template <typename T>
-using FnTypedFilterCallbackProvider_t = bool(*)(CConVar<T> *cvar, CSplitScreenSlot slot, const T *pNewValue, const T *pOldValue, void *__unk01, FnTypedFilterCallback_t<T> cb);
+using FnTypedFilterCallbackProvider_t = bool(*)(CConVar<T> *cvar, CSplitScreenSlot slot, const T *pNewValue, const T *pOldValue, ConVarUserInfoSet_t *userinfo_data, FnTypedFilterCallback_t<T> cb);
 
 using FnGenericFilterCallback_t = bool(*)(ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue);
-using FnGenericFilterCallbackProvider_t = bool(*)(ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, void *__unk01, FnGenericFilterCallback_t cb);
+using FnGenericFilterCallbackProvider_t = bool(*)(ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, ConVarUserInfoSet_t *userinfo_data, FnGenericFilterCallback_t cb);
 
-using FnCustomData_t = void *(*)();
+using FnGetEnumInfoHandle_t = SchemaMetaInfoHandle_t<CSchemaEnumInfo> (*)();
 
 struct ConVarValueInfo_t
 {
@@ -645,7 +648,7 @@ struct ConVarValueInfo_t
 		m_fnCallBack( nullptr ),
 		m_fnProviderFilterCallBack( nullptr ),
 		m_fnFilterCallBack( nullptr ),
-		m_fnCustomData( nullptr ),
+		m_fnGetEnumInfoHandle( nullptr ),
 		m_eVarType( type ),
 		m_CompletionCallBack()
 	{}
@@ -676,7 +679,7 @@ struct ConVarValueInfo_t
 	{
 		if(cb)
 		{
-			m_fnProviderCallBack = []( ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, void *__unk01, FnGenericChangeCallback_t cb ) {
+			m_fnProviderCallBack = []( ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, ConVarUserInfoSet_t *userinfo_data, FnGenericChangeCallback_t cb ) {
 				reinterpret_cast<FnTypedChangeCallback_t<T>>(cb)(reinterpret_cast<CConVar<T> *>(ref), nSlot, reinterpret_cast<const T *>(pNewValue), reinterpret_cast<const T *>(pOldValue));
 			};
 
@@ -689,7 +692,7 @@ struct ConVarValueInfo_t
 	{
 		if(cb)
 		{
-			m_fnProviderFilterCallBack = []( ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, void *__unk01, FnGenericFilterCallback_t cb ) {
+			m_fnProviderFilterCallBack = []( ConVarRefAbstract *ref, CSplitScreenSlot nSlot, const CVValue_t *pNewValue, const CVValue_t *pOldValue, ConVarUserInfoSet_t *userinfo_data, FnGenericFilterCallback_t cb ) {
 				return reinterpret_cast<FnTypedFilterCallback_t<T>>(cb)(reinterpret_cast<CConVar<T> *>(ref), nSlot, reinterpret_cast<const T *>(pNewValue), reinterpret_cast<const T *>(pOldValue));
 			};
 
@@ -724,8 +727,7 @@ public:
 	// AMNOTE: Currently the only usage is lb_debug_tiles, lb_debug_silhouette and sc_visualize_sceneobjects
 	// which holds a reference to a enum schema binding, it's a string type under the hood and is converted from int
 	// to a enum value string via the change callbacks.
-	// So not sure if this is a concrete enum binding prop or any data prop.
-	FnCustomData_t m_fnCustomData;
+	FnGetEnumInfoHandle_t m_fnGetEnumInfoHandle;
 
 	EConVarType m_eVarType;
 
@@ -919,7 +921,7 @@ public:
 		m_iCompletionCBIndex = 0;
 		m_GameInfoFlags = 0;
 		m_UserInfoByteIndex = 0;
-		m_fnCustomData = nullptr;
+		m_fnGetEnumInfoHandle = nullptr;
 	}
 
 	const char *GetName( void ) const { return m_pszName; }
@@ -951,7 +953,8 @@ public:
 		return GetCvarTypeTraits( m_eVarType );
 	}
 
-	FnCustomData_t GetCustomDataFn() const { return m_fnCustomData; }
+	bool HasEnumInfo() const { return m_fnGetEnumInfoHandle != nullptr; }
+	SchemaMetaInfoHandle_t<CSchemaEnumInfo> GetEnumInfo() const { return HasEnumInfo() ? m_fnGetEnumInfoHandle() : SchemaMetaInfoHandle_t<CSchemaEnumInfo> {}; }
 
 	int GetDataByteSize() const { return TypeTraits()->m_ByteSize; }
 	bool IsPrimitiveType() const { return TypeTraits()->m_IsPrimitive; }
@@ -1039,7 +1042,7 @@ private:
 	int m_UserInfoByteIndex;
 
 	// Copied directly as is from ConVarValueInfo_t
-	FnCustomData_t m_fnCustomData;
+	FnGetEnumInfoHandle_t m_fnGetEnumInfoHandle;
 
 	// At convar registration this is trimmed to better match convar type being used
 	// or if it was initialized as EConVarType_Invalid it would be of this size
