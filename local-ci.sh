@@ -16,6 +16,15 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# A submodule's .git is a file pointing into the superproject (gitdir: ../.git/modules/...),
+# which act's copy of the tree cannot follow, and every commit made there moves the
+# superproject's gitlink. Run this from a standalone clone instead.
+if [ -n "$(git rev-parse --show-superproject-working-tree 2>/dev/null)" ]; then
+	echo "This checkout is a submodule of $(git rev-parse --show-superproject-working-tree)." >&2
+	echo "Run local-ci.sh from a standalone clone: git clone -b cs2 https://github.com/mrc4tt/hl2sdk" >&2
+	exit 1
+fi
+
 RUNNER_IMAGE=catthehacker/ubuntu:full-latest
 BUILD_IMAGE=ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
 
