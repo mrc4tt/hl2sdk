@@ -1,0 +1,160 @@
+name: Local CI
+
+# ci.yml and cmake.yml, run on this machine through act by local-ci.sh instead of
+# on GitHub. Every job is gated on act's actor, so this never runs on GitHub.
+#
+# act can't run windows-2022 jobs, so the windows job cross-compiles with clang-cl
+# against an xwin splat instead of MSVC: the CMake libraries like cmake.yml, and
+# .github/local/check-windows.sh for what CheckScript checks in ci.yml.
+#
+# Nothing here uses a JavaScript action besides the repository checkout, which
+# act does itself, so neither the AlliedModders build container nor the runner
+# image needs node.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # ci.yml's linux builds: AMBuild with CheckScript, then the tests
+  ambuild_linux:
+    if: github.actor == 'nektos/act'
+    strategy:
+      matrix:
+        include:
+          - { cc: clang-22, cxx: clang++-22, debug: false }
+          - { cc: gcc, cxx: g++, debug: false }
+          - { cc: clang-22, cxx: clang++-22, debug: true }
+          - { cc: gcc, cxx: g++, debug: true }
+      fail-fast: false
+
+    name: linux - ${{ matrix.cc }}${{ matrix.debug && ' - debug' || '' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
+
+    steps:
+      - uses: actions/checkout@v7
+        name: Repository checkout
+        with:
+          path: repository
+
+      - name: hl2sdk-manifests checkout
+        run: git clone --depth 1 https://github.com/alliedmodders/hl2sdk-manifests "$GITHUB_WORKSPACE/hl2sdk-manifests"
+
+      - name: Select compiler
+        run: |
+          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          ${{ matrix.cc }} --version
+          ${{ matrix.cxx }} --version
+
+      - name: Build
+        shell: bash
+        working-directory: repository
+        run: |
+          rm -rf build
+          mkdir build
+          cd build
+          python3 ../configure.py --hl2sdk-manifests ../../hl2sdk-manifests ${{ matrix.debug && '--enable-debug' || '--enable-optimize' }}
+          ambuild
+
+      - name: Test
+        shell: bash
+        working-directory: repository
+        run: |
+          for test in build/check/*_test/linux-x86_64/*_test; do
+            echo "Running $test"
+            LD_LIBRARY_PATH=lib/linux64 $test
+          done
+
+  # cmake.yml's linux builds
+  cmake_linux:
+    if: github.actor == 'nektos/act'
+    strategy:
+      matrix:
+        build_type: [Release, Debug]
+      fail-fast: false
+
+    name: linux cmake - ${{ matrix.build_type }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        name: Repository checkout
+
+      # Built outside the workspace, so a build folder copied from the host can't get in the way
+      - name: Build the libraries
+        run: |
+          cmake -S . -B "${{ runner.temp }}/build" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake --build "${{ runner.temp }}/build" --config ${{ matrix.build_type }} -j"$(nproc)"
+          ls -R "${{ runner.temp }}/build/lib"
+
+  # cmake.yml's and ci.yml's windows builds, cross-compiled
+  windows:
+    if: github.actor == 'nektos/act'
+    name: windows (clang-cl cross)
+    runs-on: ubuntu-latest
+    env:
+      XWIN_VERSION: "0.6.6"
+
+    steps:
+      - uses: actions/checkout@v7
+        name: Repository checkout
+
+      # The MSVC STL needs clang >= 19 (STL1000) and the runner image's default is 18
+      - name: Install the LLVM cross toolchain
+        id: llvm
+        run: |
+          set -euo pipefail
+          tools="clang-cl lld-link llvm-lib llvm-rc llvm-mt llvm-ml"
+          find_bin() {
+            find /usr/lib -mindepth 2 -maxdepth 2 -type d -path '/usr/lib/llvm-*/bin' | sort -V | tac | while read -r dir; do
+              complete=1
+              for tool in $tools; do [ -x "$dir/$tool" ] || complete=0; done
+              if [ "$complete" = 1 ] && [ "$(basename "$(dirname "$dir")" | cut -d- -f2)" -ge 19 ]; then echo "$dir"; break; fi
+            done
+          }
+          binDir=$(find_bin)
+          if [ -z "$binDir" ]; then
+            sudo=$(command -v sudo || true)
+            $sudo apt-get update -qq
+            $sudo apt-get install -y -qq clang-20 lld-20 llvm-20 ninja-build
+            binDir=$(find_bin)
+          fi
+          "$binDir/clang-cl" --version | head -1
+          echo "binDir=$binDir" >> "$GITHUB_OUTPUT"
+
+      # local-ci.sh mounts the host's ~/.xwin at /opt/xwin; without one this splats a fresh copy (~630MB)
+      - name: Splat the MSVC CRT and Windows SDK
+        id: xwin
+        run: |
+          set -euo pipefail
+          if [ -d /opt/xwin/crt/include ]; then
+            echo "root=/opt/xwin" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cd "${{ runner.temp }}"
+          curl -fsSL -o xwin.tar.gz \
+            "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          tar xzf xwin.tar.gz
+          "xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl/xwin" \
+            --accept-license --arch x86_64 splat --output "${{ runner.temp }}/xwin"
+          rm -rf .xwin-cache xwin.tar.gz "xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl"
+          echo "root=${{ runner.temp }}/xwin" >> "$GITHUB_OUTPUT"
+
+      # Release only: xwin splats no debug CRT
+      - name: Build the libraries
+        run: |
+          cmake -S . -B "${{ runner.temp }}/build-win64" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=.github/local/toolchain-win64-clang-cl.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_TOOLCHAIN_BIN='${{ steps.llvm.outputs.binDir }}' \
+            -DXWIN_ROOT='${{ steps.xwin.outputs.root }}'
+          cmake --build "${{ runner.temp }}/build-win64" -j"$(nproc)"
+          ls -R "${{ runner.temp }}/build-win64/lib"
+
+      - name: Check the headers and sources
+        env:
+          LLVM_BIN: ${{ steps.llvm.outputs.binDir }}
+          XWIN_ROOT: ${{ steps.xwin.outputs.root }}
+        run: .github/local/check-windows.sh "${{ runner.temp }}/check-win64"
