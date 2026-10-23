@@ -35,6 +35,8 @@
 #include "tier0/platform.h"
 #include "commonmacros.h"
 #include "wchartypes.h"
+#include "tier0/basetypes_schema.h"
+#include "tier0/recttypes.h"
 
 #include "tier0/valve_off.h"
 
@@ -95,7 +97,6 @@ T abs( const T &a )
 
 
 
-#if !defined(_X360)
 FORCEINLINE float fpmin( float a, float b )
 {
 	return ( a < b ) ? a : b;
@@ -105,7 +106,6 @@ FORCEINLINE float fpmax( float a, float b )
 {
 	return ( a > b ) ? a : b;
 }
-#endif
 
 #ifdef __cplusplus
 
@@ -165,7 +165,6 @@ inline T clamp( T const &val, Y const &minVal, Y const &maxVal )
 //-----------------------------------------------------------------------------
 // fsel
 //-----------------------------------------------------------------------------
-#ifndef _X360
 
 #define fsel(c,x,y) ( (c) >= 0 ? (x) : (y) )
 
@@ -181,52 +180,6 @@ inline T clamp( T const &val, Y const &minVal, Y const &maxVal )
 // this is fast if nbit is a compile-time immediate 
 #define ibitsel(a, nbit, x, y) ( ( ((a) & (1 << (nbit))) != 0 ) ? (x) : (y) )
 
-#else
-
-// __fsel(double fComparand, double fValGE, double fLT) == fComparand >= 0 ? fValGE : fLT
-// this is much faster than if ( aFloat > 0 ) { x = .. }
-// the XDK defines two intrinsics, one for floats and one for doubles -- it's the same
-// opcode, but the __fself version tells the compiler not to do a wasteful unnecessary
-// rounding op after each sel.
-// #define fsel __fsel
-FORCEINLINE double fsel(double fComparand, double fValGE, double fLT) { return __fsel( fComparand, fValGE, fLT ); }
-FORCEINLINE float fsel(float fComparand, float fValGE, float fLT) { return __fself( fComparand, fValGE, fLT ); }
-
-// if a >= 0, return x, else y
-FORCEINLINE int isel( int a, int x, int y )
-{
-	int mask = a >> 31; // arithmetic shift right, splat out the sign bit
-	return x + ((y - x) & mask);
-};
-
-// if a >= 0, return x, else y
-FORCEINLINE unsigned isel( int a, unsigned x, unsigned y )
-{
-	int mask = a >> 31; // arithmetic shift right, splat out the sign bit
-	return x + ((y - x) & mask);
-};
-
-// ( x == y ) ? a : b
-FORCEINLINE unsigned ieqsel( unsigned x, unsigned y, unsigned a, unsigned b )
-{
-	unsigned mask = (x == y) ? 0 : -1;
-	return a + ((b - a) & mask);
-};
-
-// ( x == y ) ? a : b
-FORCEINLINE int ieqsel( int x, int y, int a, int b )
-{
-	int mask = (x == y) ? 0 : -1;
-	return a + ((b - a) & mask);
-};
-
-// if the nth bit of a is set (counting with 0 = LSB),
-// return x, else y
-// this is fast if nbit is a compile-time immediate 
-#define ibitsel(a, nbit, x, y) ( (x) + (((y) - (x)) & (((a) & (1 << (nbit))) ? 0 : -1)) )
-
-#endif
-
 #if CROSS_PLATFORM_VERSION < 1
 
 #ifndef DONT_DEFINE_BOOL // Needed for Cocoa stuff to compile.
@@ -240,20 +193,6 @@ typedef uint8 byte;
 typedef uint16 word;
 #endif
 
-#ifdef _WIN32
-typedef wchar_t ucs2; // under windows wchar_t is ucs2
-#else
-typedef unsigned short ucs2;
-#endif
-
-enum ThreeState_t
-{
-	TRS_FALSE,
-	TRS_TRUE,
-	TRS_NONE,
-};
-
-typedef float vec_t;
 #ifdef _WIN32
 typedef __int32 vec_t_as_gpr; // a general purpose register type equal in size to a vec_t (in case we have to avoid the fpu for some reason)
 #endif
@@ -300,7 +239,7 @@ inline vec_t BitsToFloat( uint32 i )
 	union Convertor_t
 	{
 		vec_t f;
-		unsigned long ul;
+		uint32 ul;
 	}tmp;
 	tmp.ul = i;
 	return tmp.f;
@@ -308,11 +247,7 @@ inline vec_t BitsToFloat( uint32 i )
 
 inline bool IsFinite( const vec_t &f )
 {
-#if _X360
-	return f == f && fabs(f) <= FLT_MAX;
-#else
 	return ((FloatBits(f) & 0x7F800000) != 0x7F800000);
-#endif
 }
 
 inline uint32 FloatAbsBits( vec_t f )
@@ -367,11 +302,6 @@ inline float FloatNegate( vec_t f )
 #endif
 
 // FIXME: why are these here?  Hardly anyone actually needs them.
-struct color24
-{
-	byte r, g, b;
-};
-
 typedef struct color32_s
 {
 	bool operator!=( const struct color32_s &other ) const;
@@ -415,38 +345,6 @@ struct vrect_t
 };
 
 #endif
-
-
-//-----------------------------------------------------------------------------
-// MaterialRect_t struct - used for DrawDebugText
-//-----------------------------------------------------------------------------
-struct Rect_t
-{
-	int x, y;
-	int width, height;
-};
-
-struct Rect3D_t
-{
-	int x, y, z;
-	int width, height, depth;
-
-	FORCEINLINE Rect3D_t( int nX, int nY, int nZ, int nWidth, int nHeight, int nDepth )
-	{
-		x = nX;
-		y = nY;
-		z = nZ;
-		width = nWidth;
-		height = nHeight;
-		depth = nDepth;
-	}
-
-	FORCEINLINE Rect3D_t( void )
-	{
-	}
-
-};
-
 
 
 //-----------------------------------------------------------------------------
@@ -596,8 +494,54 @@ protected:
 	inline Type  operator--( Type &a, int ) { Type t = a; --a; return t; }
 
 #define MAX_SPLITSCREEN_CLIENT_BITS 0
-// this should == MAX_JOYSTICKS in InputEnums.h
+// this should == MAX_JOYSTICKS in inputenums.h
 #define MAX_SPLITSCREEN_CLIENTS	( 1 << MAX_SPLITSCREEN_CLIENT_BITS ) // 4
+
+class CEntityIndex
+{
+public:
+	CEntityIndex( int index )
+	{
+		_index = index;
+	}
+
+	int Get() const
+	{
+		return _index;
+	}
+
+	bool operator==( const CEntityIndex &other ) const { return other._index == _index; }
+	bool operator!=( const CEntityIndex &other ) const { return other._index != _index; }
+	
+private:
+	int _index;
+};
+
+struct CSplitScreenSlot
+{
+	CSplitScreenSlot() :
+		m_Data(0)
+	{}
+	
+	CSplitScreenSlot( int index )
+	{
+		m_Data = index;
+	}
+	
+	int Get() const
+	{
+		return m_Data;
+	}
+
+	operator int() const
+	{
+		return m_Data;
+	}
+	
+	int m_Data;
+};
+
+DECLARE_POINTER_HANDLE( HSCRIPT );
 
 #include "tier0/valve_on.h"
 

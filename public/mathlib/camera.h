@@ -19,6 +19,7 @@
 // For vec_t, put this somewhere else?
 #include "tier0/basetypes.h"
 #include "mathlib/vector.h"
+#include "mathlib/vectoraligned.h"
 
 #include "tier0/dbg.h"
 #include "mathlib/vector2d.h"
@@ -26,6 +27,7 @@
 #include "mathlib/vmatrix.h"
 #include "mathlib/ssemath.h"
 #include "datamap.h"
+#include "mathlib/aabb.h"
 
 #include "tier0/memalloc.h"
 // declarations for camera and frustum
@@ -56,47 +58,6 @@ void ComputeProjectionMatrix( VMatrix *pCameraToProjection, float flZNear, float
 void ComputeScreenSpacePosition( Vector2D *pScreenPosition, const Vector &vecWorldPosition, 
 	const Camera_t &camera, int width, int height );
 
-
-//--------------------------------------------------------------------------------------
-// AABB
-//--------------------------------------------------------------------------------------
-struct AABB_t
-{
-	DECLARE_BYTESWAP_DATADESC();
-
-	Vector				m_vMinBounds;
-	Vector				m_vMaxBounds;
-
-	Vector GetCenter() const { return ( m_vMaxBounds + m_vMinBounds ) / 2.0f; }
-
-	float GetMinDistToPoint( const Vector &vPoint ) const
-	{
-		return CalcDistanceToAABB( m_vMinBounds, m_vMaxBounds, vPoint );
-	}
-
-	void CreatePlanesFrom( Vector4D *pPlanes ) const
-	{
-		// X
-		pPlanes[0] = Vector4D( 1, 0, 0, -m_vMaxBounds.x  );
-		pPlanes[1] = Vector4D( -1, 0, 0, m_vMinBounds.x );
-
-		// Y
-		pPlanes[2] = Vector4D( 0, 1, 0, -m_vMaxBounds.y );
-		pPlanes[3] = Vector4D( 0, -1, 0, m_vMinBounds.y );
-
-		// Z
-		pPlanes[4] = Vector4D( 0, 0, 1, -m_vMaxBounds.z );
-		pPlanes[5] = Vector4D( 0, 0, -1, m_vMinBounds.z );
-	}
-
-	// set the aabb to be invalid (max < min )
-	void MakeInvalid( void )
-	{
-		m_vMinBounds.Init( FLT_MAX, FLT_MAX, FLT_MAX );
-		m_vMaxBounds.Init( -FLT_MAX, -FLT_MAX, -FLT_MAX );
-	}
-
-};
 
 class CFrustum
 {
@@ -152,14 +113,9 @@ public:
 			fltx4 zTotalBack = MulSIMD( m_frustum.planes[i].nZ, MaskedAssign( m_frustum.planes[i].zSign, minz, maxz ) );
 			fltx4 dotBack = AddSIMD( xTotalBack, AddSIMD(yTotalBack, zTotalBack) );
 			// if plane of the farthest corner is behind the plane, then the box is completely outside this plane
-#if _X360
-			if  ( !XMVector3GreaterOrEqual( dotBack, m_frustum.planes[i].dist ) )
-				return false;
-#else
 			fltx4 isOut = CmpLtSIMD( dotBack, m_frustum.planes[i].dist );
 			if ( IsAnyNegative(isOut) )
 				return false;
-#endif
 		}
 		return true;
 	}

@@ -315,11 +315,12 @@
     </Bscmake>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="almostequal.cpp" />
     <ClCompile Include="anorms.cpp" />
     <ClCompile Include="bumpvects.cpp" />
     <ClCompile Include="color_conversion.cpp" />
     <ClCompile Include="halton.cpp" />
-    <ClCompile Include="IceKey.cpp" />
+    <ClCompile Include="icekey.cpp" />
     <ClCompile Include="imagequant.cpp" />
     <ClCompile Include="lightdesc.cpp" />
     <ClCompile Include="mathlib_base.cpp" />
@@ -329,6 +330,7 @@
     <ClCompile Include="randsse.cpp" />
     <ClCompile Include="simdvectormatrix.cpp" />
     <ClCompile Include="sparse_convolution_noise.cpp" />
+    <ClCompile Include="spherical.cpp" />
     <ClCompile Include="sse.cpp" />
     <ClCompile Include="sseconst.cpp" />
     <ClCompile Include="ssenoise.cpp" />
@@ -339,10 +341,9 @@
     <ClInclude Include="..\public\mathlib\anorms.h" />
     <ClInclude Include="..\public\mathlib\bumpvects.h" />
     <ClInclude Include="..\public\mathlib\compressed_3d_unitvec.h" />
-    <ClInclude Include="..\public\mathlib\compressed_light_cube.h" />
     <ClInclude Include="..\public\mathlib\compressed_vector.h" />
     <ClInclude Include="..\public\mathlib\halton.h" />
-    <ClInclude Include="..\public\mathlib\IceKey.H" />
+    <ClInclude Include="..\public\mathlib\icekey.h" />
     <ClInclude Include="..\public\mathlib\lightdesc.h" />
     <ClInclude Include="..\public\mathlib\math_pfns.h" />
     <ClInclude Include="..\public\mathlib\mathlib.h" />
@@ -358,7 +359,6 @@
     <ClInclude Include="..\public\mathlib\vector4d.h" />
     <ClInclude Include="..\public\mathlib\vmatrix.h" />
     <ClInclude Include="..\public\mathlib\vplane.h" />
-    <ClInclude Include="3dnow.h" />
     <ClInclude Include="noisedata.h" />
     <ClInclude Include="sse.h" />
   </ItemGroup>

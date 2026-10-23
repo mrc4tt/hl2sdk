@@ -12,12 +12,12 @@
 
 
 #include "ray.h"
-#include "Color.h"
+#include "color.h"
 #include "entity2/entityinstance.h"
 #include "mathlib/transform.h"
-#include "tier1/generichash.h"
-#include "tier1/utlvector.h"
-#include "tier1/utlstring.h"
+#include "tier0/generichash.h"
+#include "tier0/utlvector.h"
+#include "tier0/utlstring.h"
 
 class IPhysicsBody;
 class IPhysicsShape;

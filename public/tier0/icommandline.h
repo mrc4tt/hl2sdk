@@ -11,7 +11,7 @@
 #endif
 
 #include "tier0/platform.h"
-#include "tier1/utlstringtoken.h"
+#include "tier0/utlstringtoken.h"
 
 class CBufferString;
 
@@ -44,8 +44,8 @@ public:
 	virtual const char *GetCmdLine( void ) const = 0;
 	virtual void		AppendParm( const char* param, const char *pszValues ) = 0;
 	
-	// Returns true if there's atleast one parm available
-	virtual bool		HasParms( void ) const = 0;
+	// Returns true if the command line has at least one parm
+	virtual bool		IsWellInitialized( void ) const = 0;
 
 	virtual const char *GetParmBuffer() = 0;
 

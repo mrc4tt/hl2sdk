@@ -47,6 +47,7 @@ class SDKConfig(object):
   def configure_gcc(self, cxx):
     cxx.cflags += [
       '-Wall',
+      '-Werror',
       '-Wno-overloaded-virtual',
       '-Wno-non-virtual-dtor',
       '-Wno-delete-non-virtual-dtor',
@@ -55,7 +56,6 @@ class SDKConfig(object):
       '-Wno-unused',
       '-Wno-narrowing',
       '-Wno-register',
-      '-fno-strict-aliasing',
       '-fPIC'
     ]
 
@@ -64,21 +64,31 @@ class SDKConfig(object):
     ]
 
     cxx.cxxflags += [
-      '-std=c++17'
+      '-std=c++20'
     ]
 
     if builder.options.opt == '1':
       cxx.cflags += ['-O3']
 
+    if builder.options.debug == '1':
+      cxx.cflags += ['-g3']
+
   def configure_msvc(self, cxx):
     cxx.defines += ['COMPILER_MSVC', 'COMPILER_MSVC64']
 
     cxx.cxxflags += [
-      '/std:c++17'
+      '/std:c++20'
     ]
 
     if builder.options.opt == '1':
       cxx.cflags += ['/Ox', '/Zo']
+
+    if builder.options.debug == '1':
+      cxx.cflags += ['/MTd', '/Od', '/RTC1']
+      cxx.linkflags += ['/NODEFAULTLIB:libcmt']
+      # The game is built without iterator debugging, which changes the layout of STL types,
+      # like the strings in protobuf messages that plugins share with the game
+      cxx.defines += ['_ITERATOR_DEBUG_LEVEL=0']
 
   def configure_linux(self, cxx):
     cxx.defines += ['_LINUX', 'LINUX', 'POSIX', 'GNUC']
@@ -91,8 +101,7 @@ class SDKConfig(object):
       'strnicmp=strncasecmp', '_strnicmp=strncasecmp',
       'strcmpi=strcasecmp',
       '_vsnprintf=vsnprintf',
-      '_alloca=alloca',
-      'NO_MALLOC_OVERRIDE'
+      '_alloca=alloca'
     ]
 
   def configure_windows(self, cxx):
@@ -114,7 +123,9 @@ class SDKConfig(object):
 HL2SDK = SDKConfig()
 HL2SDK.configure()
 
-BuildScripts = ['interfaces/AMBuilder', 'mathlib/AMBuilder', 'PackageScript']
+BuildScripts = ['interfaces/AMBuilder', 'mathlib/AMBuilder', 'thirdparty/protobuf-3.21.8/AMBuilder', 'PackageScript']
+if builder.options.hl2sdk_manifests:
+  BuildScripts += ['CheckScript']
 # Turn off the 'lib' prefix for all platform, we will add it if we need to
 util.StaticLibPrefix = ''
 builder.Build(BuildScripts, { 'HL2SDK': HL2SDK })

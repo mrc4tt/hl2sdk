@@ -1,7 +1,17 @@
 #include "const.h"
-#include "entity2/entitysystem.h"
+#include "gameentitysystem.h"
 #include "entity2/entityclass.h"
 #include "entity2/entityinstance.h"
+#include "engine2/igameresourceservice.h"
+#include "interfaces/interfaces.h"
+
+CGameEntitySystem* GameEntitySystem()
+{
+	if (!g_pGameResourceServiceServer)
+		return nullptr;
+
+	return static_cast<CGameEntitySystem*>(static_cast<CGameResourceService*>(g_pGameResourceServiceServer)->m_pEntityResourceManifestHandler);
+}
 
 CEntityIdentity* CEntitySystem::GetEntityIdentity(CEntityIndex entnum)
 {
@@ -195,7 +205,8 @@ EntityInstanceByNameIter_t::EntityInstanceByNameIter_t(const char* szName, CEnti
 		}
 		else
 		{
-			m_pEntityHandles = GameEntitySystem()->m_entityNames[ idx ];
+			EntityNameHandles_t* pNameHandles = GameEntitySystem()->m_entityNames[ idx ];
+			m_pEntityHandles = pNameHandles ? &pNameHandles->m_Handles : nullptr;
 			m_nCurEntHandle = 0;
 
 			if (m_pEntityHandles)

@@ -5,11 +5,12 @@ builder.SetBuildFolder('/')
 
 project = builder.StaticLibraryProject('mathlib')
 project.sources = [
+	'almostequal.cpp',
 	'anorms.cpp',
 	'bumpvects.cpp',
 	'color_conversion.cpp',
 	'halton.cpp',
-	'IceKey.cpp',
+	'icekey.cpp',
 	'imagequant.cpp',
 	'lightdesc.cpp',
 	'mathlib_base.cpp',
@@ -19,6 +20,7 @@ project.sources = [
 	'randsse.cpp',
 	'simdvectormatrix.cpp',
 	'sparse_convolution_noise.cpp',
+	'spherical.cpp',
 	'sse.cpp',
 	'sseconst.cpp',
 	'ssenoise.cpp',

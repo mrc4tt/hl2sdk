@@ -1,2 +1,5 @@
 # Fix file encoding (cs2)
 3dc26fdbb134fb377f82dda851f64eb0780465e9
+
+# Add .gitattributes and normalize line endings
+2d68a8d063f2f5f3ca83729f5e918981930b4df3

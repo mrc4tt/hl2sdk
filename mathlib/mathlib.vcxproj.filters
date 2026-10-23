@@ -15,6 +15,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="almostequal.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="anorms.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -27,7 +30,7 @@
     <ClCompile Include="halton.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="IceKey.cpp">
+    <ClCompile Include="icekey.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="imagequant.cpp">
@@ -57,6 +60,9 @@
     <ClCompile Include="sparse_convolution_noise.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="spherical.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="sse.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -83,16 +89,13 @@
     <ClInclude Include="..\public\mathlib\compressed_3d_unitvec.h">
       <Filter>Public Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\public\mathlib\compressed_light_cube.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\public\mathlib\compressed_vector.h">
       <Filter>Public Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\public\mathlib\halton.h">
       <Filter>Public Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\public\mathlib\IceKey.H">
+    <ClInclude Include="..\public\mathlib\icekey.h">
       <Filter>Public Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\public\mathlib\lightdesc.h">
@@ -139,9 +142,6 @@
     </ClInclude>
     <ClInclude Include="..\public\mathlib\vplane.h">
       <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="3dnow.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="noisedata.h">
       <Filter>Header Files</Filter>

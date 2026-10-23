@@ -16,6 +16,7 @@
 #include "tier0/basetypes.h"
 #include "dbgflag.h"
 #include "logging.h"
+#include "tier0/messages_base.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -231,15 +232,21 @@ PLATFORM_INTERFACE bool SetupWin32ConsoleIO();
 // Legacy Logging System
 //////////////////////////////////////////////////////////////////////////
 
-// Channels which map the legacy logging system to the new system. Only LOG_GENERAL exists as shared in Source 2
+// Channels which map the legacy logging system to the new system.
 
 // Channel for all default Msg/Warning/Error commands.
 PLATFORM_INTERFACE LoggingChannelID_t LOG_GENERAL;
 
+PLATFORM_INTERFACE LoggingChannelID_t LOG_ASSERT;
+PLATFORM_INTERFACE LoggingChannelID_t LOG_CONSOLE;
+PLATFORM_INTERFACE LoggingChannelID_t LOG_DEVELOPER;
+PLATFORM_INTERFACE LoggingChannelID_t LOG_DEVELOPER_CONSOLE;
+PLATFORM_INTERFACE LoggingChannelID_t LOG_DEVELOPER_VERBOSE;
+PLATFORM_INTERFACE LoggingChannelID_t LOG_SYMBOLS;
+PLATFORM_INTERFACE LoggingChannelID_t LOG_VPROF;
+
 // Legacy logging functions
 
-PLATFORM_INTERFACE void Msg( const tchar* pMsg, ... );
-PLATFORM_INTERFACE void Warning( const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 );
 PLATFORM_INTERFACE void Warning_SpewCallStack( int iMaxCallStackLength, const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 );
 
 // AMNOTE: Required for Error method, without including whole strtools.h
@@ -264,14 +271,7 @@ PLATFORM_INTERFACE void _Warning_AlwaysSpewCallStack_Length( int iMaxCallStackLe
 PLATFORM_INTERFACE void _Error_AlwaysSpewCallStack_Enable( bool bEnable );
 PLATFORM_INTERFACE void _Error_AlwaysSpewCallStack_Length( int iMaxCallStackLength );
 
-PLATFORM_INTERFACE void DevMsg( int level, const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 );
-PLATFORM_INTERFACE void DevWarning( int level, const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 );
-
-PLATFORM_OVERLOAD void DevMsg( const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 );
-PLATFORM_OVERLOAD void DevWarning( const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 );
-
 PLATFORM_OVERLOAD void ConColorMsg( const Color& clr, const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 );
-PLATFORM_OVERLOAD void ConMsg( const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 );
 
 PLATFORM_INTERFACE void ConDMsg( const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 );
 
@@ -293,8 +293,6 @@ PLATFORM_INTERFACE void ConDMsg( const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 );
 #else
 #define DebugMsg(...)
 #endif
-
-PLATFORM_INTERFACE void COM_TimestampedLog( char const *fmt, ... ) FMTFUNCTION( 1, 2 );
 
 /* Code macros, debugger interface */
 
@@ -341,7 +339,6 @@ PLATFORM_INTERFACE void _AssertValidReadPtr( void* ptr, int count = 1 );
 PLATFORM_INTERFACE void _AssertValidWritePtr( void* ptr, int count = 1 );
 PLATFORM_INTERFACE void _AssertValidReadWritePtr( void* ptr, int count = 1 );
 
-PLATFORM_INTERFACE  void AssertValidStringPtr( const tchar* ptr, int maxchar = 0xFFFFFF );
 template<class T> inline void AssertValidReadPtr( T* ptr, int count = 1 )		     { _AssertValidReadPtr( (void*)ptr, count ); }
 template<class T> inline void AssertValidWritePtr( T* ptr, int count = 1 )		     { _AssertValidWritePtr( (void*)ptr, count ); }
 template<class T> inline void AssertValidReadWritePtr( T* ptr, int count = 1 )	     { _AssertValidReadWritePtr( (void*)ptr, count ); }
@@ -424,7 +421,7 @@ private:
 //
 // Purpose: Embed debug info in each file.
 //
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 
 	#ifdef _DEBUG
 		#pragma comment(compiler)
@@ -558,7 +555,7 @@ private:
 
 #endif
 
-// Code for programmatically setting/unsetting hardware breakpoints (there's probably a 360 and
+// Code for programmatically setting/unsetting hardware breakpoints
 #ifdef IS_WINDOWS_PC
 
 typedef void * HardwareBreakpointHandle_t;

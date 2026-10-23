@@ -1,0 +1,17 @@
+# Build directories
+/build/
+/vs/
+/linuxbuild/
+cmake-build-*/
+.cmake/
+**/x64/Release/**
+**/x64/Debug/**
+**/obj/**
+
+# IDEs and tools
+.idea/
+.vs/
+.kdev4/
+.ccls-cache/
+*.vcxproj.user
+*.pdb

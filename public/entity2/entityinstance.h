@@ -4,11 +4,12 @@
 #pragma once
 #endif
 
-#include "tier1/utlsymbollarge.h"
+#include "tier0/utlsymbollarge.h"
 #include "entity2/entitycomponent.h"
+#include "entity2/entityscriptframework.h"
 #include "entity2/entityidentity.h"
 #include "variant.h"
-#include "schemasystem/schematypes.h"
+#include "schemasystem/minschema.h"
 #include <initializer_list>
 
 class CNetworkSerializerClassInfo;
@@ -18,16 +19,33 @@ class ISave;
 class IRestore;
 struct CEntityPrecacheContext;
 struct ChangeAccessorFieldPathIndexInfo_t;
+struct CPulseArgumentPack;
+struct CPulseInputParamMap;
 struct datamap_t;
+struct NetworkStateChangedRemove_t;
 struct ScriptClassDesc_t;
+
+abstract_class IEntityVisitor
+{
+public:
+	// AMNOTE: pField points to the visited member function pointer, a BASEPTR, ENTITYFUNCPTR or USEPTR
+	virtual void Visit( CEntityInstance* pEntity, void* pField ) = 0;
+};
+
+enum AcceptInputResult_t
+{
+	ACCEPT_INPUT_NONE = 0, // Not handled, the script's Input<name> function is tried next
+	ACCEPT_INPUT_UNHANDLED = 1, // Not handled, and nothing else is tried
+	ACCEPT_INPUT_HANDLED = 2,
+};
 
 struct NetworkStateChangedData
 {
-	inline NetworkStateChangedData() : m_unk001(1), m_nLine(-1), m_nArrayIndex(-1), m_nPathIndex(ChangeAccessorFieldPathIndex_t()), m_unk101(0) { }
+	inline NetworkStateChangedData() : m_unk001(1), m_nLine(-1), m_nArrayIndex(-1), m_nPathIndex(ChangeAccessorFieldPathIndex_t()), m_bRequiresPathIndex(false), m_unk101(false) { }
 	inline explicit NetworkStateChangedData( bool bFullChanged ) :
 		m_unk001(static_cast<uint32>(!bFullChanged)), m_nLine(-1),
 		m_nArrayIndex(-1), m_nPathIndex(ChangeAccessorFieldPathIndex_t()),
-		m_unk101(0)
+		m_bRequiresPathIndex(false), m_unk101(false)
 	{ }
 
 	// nLocalOffset is the flattened field offset
@@ -39,13 +57,13 @@ struct NetworkStateChangedData
 	//		if the path to the field goes through one or more pointers, otherwise pass -1
 	// 		this value is usually a member of the CNetworkVarChainer and belongs to the last object in the chain
 	inline NetworkStateChangedData( uint32 nLocalOffset, int32 nArrayIndex = -1, ChangeAccessorFieldPathIndex_t nPathIndex = ChangeAccessorFieldPathIndex_t() ) :
-		m_unk001(1), m_LocalOffsets(0, 1), m_nLine(-1), m_nArrayIndex(nArrayIndex), m_nPathIndex(nPathIndex), m_unk101(0)
+		m_unk001(1), m_LocalOffsets(0, 1), m_nLine(-1), m_nArrayIndex(nArrayIndex), m_nPathIndex(nPathIndex), m_bRequiresPathIndex(false), m_unk101(false)
 	{
 		m_LocalOffsets.AddToHead(nLocalOffset);
 	}
 
 	inline NetworkStateChangedData(const std::initializer_list< uint32 > nLocalOffsets, int32 nArrayIndex = -1, ChangeAccessorFieldPathIndex_t nPathIndex = ChangeAccessorFieldPathIndex_t()) :
-		m_unk001(1), m_LocalOffsets(0, nLocalOffsets.size()), m_nLine(-1), m_nArrayIndex(nArrayIndex), m_nPathIndex(nPathIndex), m_unk101(1)
+		m_unk001(1), m_LocalOffsets(0, (int)nLocalOffsets.size()), m_nLine(-1), m_nArrayIndex(nArrayIndex), m_nPathIndex(nPathIndex), m_bRequiresPathIndex(true), m_unk101(false)
 	{
 		for ( const uint32& nLocalOffset : nLocalOffsets )
 		{
@@ -63,7 +81,10 @@ struct NetworkStateChangedData
 	int32 m_nArrayIndex;
 	ChangeAccessorFieldPathIndex_t m_nPathIndex;
 
-	int16 m_unk101; // default 0, if m_LocalOffsets has multiple values, it is set to 1
+	// AMNOTE: Set for the field offsets a networked vector sends for one of its elements.
+	// CNetworkVarChainer drops such a change when no path index is known
+	bool m_bRequiresPathIndex;
+	bool m_unk101;
 };
 
 class CEntityInstance
@@ -71,8 +92,8 @@ class CEntityInstance
 public:
 	virtual CNetworkSerializerClassInfo* GetNetworkSerializerInfo() = 0;
 
-	virtual void unk001() = 0;
-	virtual void unk002() = 0;
+	virtual void KV3TransferSave( CKV3TransferSaveContext* pContext ) const = 0;
+	virtual void KV3TransferLoad( CKV3TransferLoadContext* pContext ) = 0;
 
 	virtual ScriptClassDesc_t* GetScriptDesc() = 0;
 	
@@ -84,16 +105,16 @@ public:
 	virtual void AddedToEntityDatabase() = 0;
 	virtual void Spawn( const CEntityKeyValues* pKeyValues ) = 0;
 
-	virtual void PostDataUpdateDelta() = 0;
+	virtual void DispatchPostDataUpdate( /*DataUpdateType_t*/int updateType ) = 0;
 
 	virtual void PostDataUpdate( /*DataUpdateType_t*/int updateType ) = 0;
-	virtual void PostDataUpdatePreserve() = 0;
+	virtual void OnDataUnchangedInPVS() = 0;
 	virtual void Activate( /*ActivateType_t*/int activateType ) = 0;
 	virtual void UpdateOnRemove() = 0;
 	virtual void OnSetDormant( /*EntityDormancyType_t*/int prevDormancyType, /*EntityDormancyType_t*/int newDormancyType ) = 0;
 
 	virtual void* ScriptEntityIO() = 0;
-	virtual int ScriptAcceptInput( const CUtlSymbolLarge &sInputName, CEntityInstance* pActivator, CEntityInstance* pCaller, const variant_t &value, void* pUnk1, void* pUnk2 ) = 0;
+	virtual AcceptInputResult_t ScriptAcceptInput( const CUtlSymbolLarge &sInputName, CEntityInstance* pActivator, CEntityInstance* pCaller, const variant_t &value, const CPulseArgumentPack* pArgs, const CPulseInputParamMap* pParamMap ) = 0;
 	
 	virtual void PreDataUpdate( /*DataUpdateType_t*/int updateType ) = 0;
 	
@@ -102,10 +123,11 @@ public:
 	
 	virtual int Save( ISave &save ) = 0;
 	virtual int Restore( IRestore &restore ) = 0;
-	virtual void OnSave() = 0;
+	virtual bool OnSave() = 0;
 	virtual void OnRestore() = 0;
 	
-	virtual void unk201() = 0;
+	// AMNOTE: Visits the entity's stored member function pointers
+	virtual void EnumerateVisitor( IEntityVisitor* pVisitor ) = 0;
 
 	virtual int ObjectCaps() = 0;
 	virtual CEntityIndex RequiredEdictIndex() = 0;
@@ -113,34 +135,39 @@ public:
 	// marks a field for transmission over the network
 	virtual void NetworkStateChanged( const NetworkStateChangedData& data ) = 0;
 
-	// AMNOTE: NetworkState related methods
-	virtual void AddChangeAccessorPathPolymorphic( const void* data ) = 0;
-	virtual void AssignChangeAccessorPathIdsPolymorphic( const void* data ) = 0;
+	virtual void NetworkStateChangedBranch( const CFieldPath& path ) = 0;
+	// AMNOTE: Removes pending changes
+	virtual void NetworkStateChangedRemove( const NetworkStateChangedRemove_t& data ) = 0;
 
-	// Toggles network update state, if set to false would skip network updates
+	// Network state changes are ignored while set to true
 	virtual void NetworkUpdateState( bool state ) = 0;
 	virtual void NetworkStateChangedLog( const char* pszFieldName, const char* pszInfo ) = 0;
 
 	virtual bool FullEdictChanged() = 0;
 
-	virtual void unk401() = 0;
-	virtual void unk402() = 0;
+	// AMNOTE: Marks the polymorphic metadata helper of the transmit component to be rebuilt
+	virtual void InvalidatePolymorphicMetadataHelper() = 0;
+	// AMNOTE: Empty in every entity class
+	virtual void unk101() = 0;
 
 	virtual ChangeAccessorFieldPathIndex_t AddChangeAccessorPath( const CFieldPath& path ) = 0;
 	virtual void AssignChangeAccessorPathIds() = 0;
-	virtual ChangeAccessorFieldPathIndexInfo_t* GetChangeAccessorPathInfo_1() = 0;
-	virtual ChangeAccessorFieldPathIndexInfo_t* GetChangeAccessorPathInfo_2() = 0;
+	virtual ChangeAccessorFieldPathIndexInfo_t* GetChangeAccessorPathInfo() = 0;
+	virtual const ChangeAccessorFieldPathIndexInfo_t* GetChangeAccessorPathInfo() const = 0;
 	
-	virtual void unk501() = 0;
-	virtual void unk502() = 0;
+	virtual bool GetFieldPathChildIndices( const CFieldPath& path, CUtlVector<int>* pChildIndices ) = 0;
+	// AMNOTE: Returns false in every entity class
+	virtual bool GetAlternateBaselineName( const char **ppszName ) = 0;
 
 	virtual void Pulse_OnDynamicAttributeChanged() = 0;
 
 	virtual void ReloadPrivateScripts() = 0;
 	virtual datamap_t* GetDataDescMap() = 0;
 
-	virtual void unk601() = 0;
-	virtual void unk602() = 0;
+	// Returns the member whose class is named sClassName, which isn't necessarily a CEntityComponent
+	virtual void* FindComponent( const CUtlSymbolLarge& sClassName ) = 0;
+	// AMNOTE: Copies the entity's world group id into its nested members
+	virtual void UpdateNestedWorldGroupIds() = 0;
 
 	virtual SchemaMetaInfoHandle_t<CSchemaClassInfo> Schema_DynamicBinding() = 0;
 

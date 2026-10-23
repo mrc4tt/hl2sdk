@@ -5,17 +5,16 @@
 #pragma once
 #endif
 
-#include <eiface.h>
-
 #include <interfaces/interfaces.h>
+
 #include <networksystem/inetworkserializer.h>
-#include <networksystem/netmessage.h>
-#include <tier1/bitbuf.h>
-#include <tier1/utlstring.h>
-#include <tier1/utlsymbol.h>
-#include <tier1/utldelegate.h>
+#include <networksystem/networksystemtypes.h>
+#include <tier0/bitbuf.h>
+#include <tier0/utlstring.h>
+#include <tier0/utlsymbol.h>
+#include <tier0/utldelegate.h>
 #include <tier0/logging.h>
-#include "Color.h"
+#include "color.h"
 
 class CSchemaClassBindingBase;
 class INetworkSerializerBindingBuildFilter;
@@ -28,10 +27,112 @@ struct NetworkFieldInfo_t;
 struct FieldMetaInfo_t;
 class CSchemaType;
 
-enum NetworkFieldChangeCallbackPerformType_t
+template<typename PROTO_TYPE>
+class CNetMessagePB;
+
+class CNetMessage
 {
-	NETWORK_FIELD_CHANGE_CALLBACK_PERFORM_ON_CHANGE,
-	NETWORK_FIELD_CHANGE_CALLBACK_PERFORM_ON_CHANGE_OR_CREATE
+public:
+	// Disabled as per CNetMessagePB note
+	CNetMessage() = delete;
+	CNetMessage( const CNetMessage & ) = delete;
+
+	virtual ~CNetMessage() {}
+
+	// Returns the underlying proto object
+	virtual void *AsProto() const = 0;
+	virtual void *AsProto2() const = 0;
+
+	virtual INetworkMessageInternal *GetNetMessage() const = 0;
+	virtual CNetMessage *CopyConstruct() const = 0;
+	virtual NetworkMessageId GetMessageId() const = 0;
+	virtual const char *GetName() const = 0;
+
+	// Helper function to cast up the abstract message to a concrete CNetMessagePB<T> type.
+	// Doesn't do any validity checks itself!
+	template<typename T>
+	const CNetMessagePB<T> *ToPB() const
+	{
+		return static_cast<const CNetMessagePB<T> *>(this);
+	}
+
+	template<typename T>
+	CNetMessagePB<T> *ToPB()
+	{
+		return static_cast<CNetMessagePB<T> *>(this);
+	}
+
+	float GetMargin() const
+	{
+		return m_flMargin;
+	}
+
+private:
+	double m_flRecvTime;
+	int m_nTick;
+	NetChannelBufType_t m_nBufType;
+	int m_nBits;
+	int m_nInSequenceNr;
+	float m_flMargin;
+	int64 m_unk101;
+};
+
+// AMNOTE: This is a stub class over real CNetMessagePB!
+// This is mainly to access the game constructed objects, and not for direct initialization of them
+// since this misses the CNetMessage implementation which requires supplying other proto related info like
+// proto binding object, proto msg id/group, etc.
+// So to allocate the message yourself use INetworkMessageInternal::AllocateMessage() or INetworkMessages::AllocateNetMessageAbstract()
+// functions instead of direct initialization (they both are equivalent)!
+// Example usage:
+// CNetMessagePB<ProtoClass> *msg = INetworkMessageInternal::AllocateMessage()->ToPB<ProtoClass>();
+// msg->field1( 2 );
+// msg->field2( 3 );
+// IGameEventSystem::PostEventAbstract( ..., msg, ... );
+template<typename PROTO_TYPE>
+class CNetMessagePB : public CNetMessage, public PROTO_TYPE
+{
+public:
+	// Prevent manual construction of this object as per the comment above
+	CNetMessagePB() = delete;
+	CNetMessagePB( const CNetMessagePB & ) = delete;
+};
+
+abstract_class IProtobufBinding
+{
+public:
+	virtual const char *GetName() = 0;
+	virtual int GetSize() = 0;
+
+	virtual const char *ToString(const void *pData, CUtlString &sResult) = 0;
+
+	virtual const char *GetGroup() = 0;
+	virtual Color GetGroupColor() = 0;
+	virtual NetChannelBufType_t GetBufType() = 0;
+
+	virtual CNetMessage *AllocateMessage() = 0;
+
+	virtual bool OkToRedispatch() = 0;
+	virtual bool unk001() = 0;
+};
+
+struct NetMessageInfo_t
+{
+	int m_nCategories;
+	IProtobufBinding *m_pBinding;
+	CUtlString m_szGroup;
+	NetworkMessageId m_MessageId;
+	NetworkGroupId m_GroupId;
+
+	// AMNOTE: From IProtobufBinding::GetBufType()
+	NetChannelBufType_t m_nBufType : 6;
+	// AMNOTE: Set by FindOrCreateNetMessage's bCannotBeNetworked
+	bool m_bCannotBeNetworked : 1;
+	uint8 m_unk001 : 1;
+
+	// AMNOTE: AddCategoryMask ORs nMask into it too when bRequireHandler is true. ConfirmAllMessageHandlersInstalled
+	// reports channels in these categories that have no handler registered for the message
+	int m_nRequiredHandlerCategories;
+	bool m_bOkayToRedispatch;
 };
 
 enum NetworkFieldChangedDelegateType_t
@@ -64,8 +165,10 @@ public:
 
 	virtual void AssociateNetMessageWithChannelCategoryAbstract(INetworkMessageInternal *pNetMessage, NetworkCategoryId nCategoryId, bool) = 0;
 
-	// Passing nMessasgeId as -1 would auto-assign the id even if bAutoAssignId is false based on the message name hash.
-	virtual INetworkMessageInternal *FindOrCreateNetMessage(int nMessageId, IProtobufBinding const *pProtoBinding, uint nMessageSize, INetworkSerializerBindingBuildFilter *pUnused, bool bCreateIfNotFound = true, bool bAutoAssignId = false) = 0;
+	// Passing nMessasgeId as -1 would auto-assign the id based on the message name hash.
+	// AMNOTE: bCannotBeNetworked marks the message as never sent over the network, Serialize rejects it,
+	// and its id is auto-assigned too
+	virtual INetworkMessageInternal *FindOrCreateNetMessage(int nMessageId, IProtobufBinding const *pProtoBinding, uint nMessageSize, INetworkSerializerBindingBuildFilter *pUnused, bool bCreateIfNotFound = true, bool bCannotBeNetworked = false) = 0;
 
 	virtual bool Serialize(bf_write &pBuf, const CNetMessage *pData) = 0;
 

@@ -13,11 +13,29 @@ jobs:
             cc: clang-22
             cxx: clang++-22
             container_image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
+            configure_args: --enable-optimize
+          - os: ubuntu-22.04
+            cc: gcc
+            cxx: g++
+            container_image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
+            configure_args: --enable-optimize
           - os: windows-2022
             cc: msvc
+          - os: ubuntu-22.04
+            cc: clang-22
+            cxx: clang++-22
+            container_image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
+            configure_args: --enable-debug
+            debug: true
+          - os: ubuntu-22.04
+            cc: gcc
+            cxx: g++
+            container_image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
+            configure_args: --enable-debug
+            debug: true
       fail-fast: false
 
-    name: ${{ matrix.os }} - ${{ matrix.cc }}
+    name: ${{ matrix.os }} - ${{ matrix.cc }}${{ matrix.debug && ' - debug' || '' }}
     runs-on: ${{ matrix.os }}
     container:
       image: ${{ matrix.container_image }}
@@ -29,6 +47,12 @@ jobs:
           fetch-depth: 0
           submodules: recursive
           path: repository
+
+      - uses: actions/checkout@v7
+        name: hl2sdk-manifests checkout
+        with:
+          repository: alliedmodders/hl2sdk-manifests
+          path: hl2sdk-manifests
 
       - uses: actions/checkout@v7
         name: AMBuild checkout
@@ -46,7 +70,7 @@ jobs:
         run: |
           python3 -m pip install ./ambuild
 
-      - name: Select clang compiler
+      - name: Select compiler
         if: startsWith(runner.os, 'Linux')
         run: |
           echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
@@ -60,11 +84,22 @@ jobs:
         run: |
           mkdir build
           cd build
-          python3 ../configure.py
+          python3 ../configure.py --hl2sdk-manifests ../../hl2sdk-manifests ${{ matrix.configure_args }}
           ambuild
 
+      - name: Test
+        if: startsWith(runner.os, 'Linux')
+        shell: bash
+        working-directory: repository
+        run: |
+          for test in build/check/*_test/linux-x86_64/*_test; do
+            echo "Running $test"
+            LD_LIBRARY_PATH=lib/linux64 $test
+          done
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        if: matrix.cc != 'gcc' && !matrix.debug
+        uses: actions/upload-artifact@v7
         with:
           name: libs_${{ runner.os }}
           path: repository/build/lib

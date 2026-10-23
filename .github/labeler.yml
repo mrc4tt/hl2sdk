@@ -10,17 +10,13 @@ Deadlock:
 Engine:
   - changed-files:
     - any-glob-to-any-file:
-      - public/eiface.h
-      - public/iserver.h
       - public/igameevents.h
-      - public/iloopmode.h
-      - public/engine/**
+      - public/engine2/**
 
 Networking:
   - changed-files:
     - any-glob-to-any-file:
       - public/networksystem/**
-      - public/inetchannel.h
       - public/networkstringtabledefs.h
       - public/irecipientfilter.h
 
@@ -31,20 +27,19 @@ Entity:
       - entity2/**
       - public/entityhandle.h
       - public/datamap.h
-      - public/variant.h
 
 Tier0:
   - changed-files:
     - any-glob-to-any-file:
       - public/tier0/**
       - public/tier1/**
-      - tier1/**
-      - public/icvar.h
+      - tier0_perproject/**
 
 Schema System:
   - changed-files:
     - any-glob-to-any-file:
       - public/schemasystem/**
+      - public/schemalib/**
 
 Mathlib:
   - changed-files:

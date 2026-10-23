@@ -3,30 +3,32 @@
 
 #include "tier0/platform.h"
 #include "tier0/threadtools.h"
-#include "tier1/generichash.h"
-#include "tier1/keyvalues3.h"
-#include "tier1/utlsymbollarge.h"
-#include "tier1/utlvector.h"
-#include "tier1/utldict.h"
-#include "tier1/utlmap.h"
-#include "tier1/utlhashtable.h"
-#include "tier1/utldelegate.h"
-#include "tier1/utlscratchmemory.h"
-#include "tier1/utlstring.h"
+#include "tier0/generichash.h"
+#include "tier0/keyvalues3.h"
+#include "tier0/utlsymboltablelarge.h"
+#include "tier0/utlvector.h"
+#include "tier0/utldict.h"
+#include "tier0/utlmap.h"
+#include "tier0/utlhashtable.h"
+#include "tier0/utldelegate.h"
+#include "tier0/mempool.h"
+#include "tier0/utlstring.h"
 #include "networksystem/inetworkserializer.h"
 #include "vscript/ivscript.h"
-#include "eiface.h"
 #include "resourcefile/resourcetype.h"
 #include "entityhandle.h"
 #include "concreteentitylist.h"
 #include "entitydatainstantiator.h"
+#include "entity2/ientity2_entityio.h"
+#include "entity2/entitystructs.h"
+#include "entity2/entityinterfaces.h"
 #include "gametime.h"
 
 class CKV3Arena;
+class CPulseCallContextInfo;
 class CEntityClass;
 class CEntityComponentHelper;
 class CEntityKeyValues;
-class CGameEntitySystem;
 class IEntityIONotify;
 class INetworkFieldChangedEventQueue;
 class INetworkFieldScratchData;
@@ -39,34 +41,12 @@ class IEntityResourceManifestBuilder;
 class ISpawnGroupEntityFilter;
 class IHandleEntity;
 struct ComponentUnserializerFieldInfo_t;
-
-extern CGameEntitySystem* GameEntitySystem();
-
-typedef void (*EntityResourceManifestCreationCallback_t)(IEntityResourceManifest *, void *);
-
-enum EntityIOTargetType_t
-{
-	ENTITY_IO_TARGET_INVALID = -1,
-	ENTITY_IO_TARGET_CLASSNAME = 0,
-	ENTITY_IO_TARGET_CLASSNAME_DERIVES_FROM = 1,
-	ENTITY_IO_TARGET_ENTITYNAME = 2,
-	ENTITY_IO_TARGET_CONTAINS_COMPONENT = 3,
-	ENTITY_IO_TARGET_SPECIAL_ACTIVATOR = 4,
-	ENTITY_IO_TARGET_SPECIAL_CALLER = 5,
-	ENTITY_IO_TARGET_EHANDLE = 6,
-	ENTITY_IO_TARGET_ENTITYNAME_OR_CLASSNAME = 7,
-};
+struct EntOutput_t;
 
 enum EntityIterType_t
 {
 	ENTITY_ITER_OVER_ACTIVE = 0x0,
 	ENTITY_ITER_OVER_DORMANT = 0x1,
-};
-
-enum SpawnGroupEntityFilterType_t
-{
-	SPAWN_GROUP_ENTITY_FILTER_FALLBACK = 0x0,
-	SPAWN_GROUP_ENTITY_FILTER_MOD_SPECIFIC = 0x1,
 };
 
 enum ClearEntityDatabaseMode_t
@@ -75,37 +55,15 @@ enum ClearEntityDatabaseMode_t
 	CED_NETWORKEDONLY_AND_DONTCLEARSTRINGPOOL = 0x1,
 };
 
-enum ActivateType_t
-{
-	ACTIVATE_TYPE_INITIAL_CREATION = 0x0,
-	ACTIVATE_TYPE_DATAUPDATE_CREATION = 0x1,
-	ACTIVATE_TYPE_ONRESTORE = 0x2,
-};
-
-enum DataUpdateType_t
-{
-	DATA_UPDATE_CREATED = 0x0,
-	DATA_UPDATE_DATATABLE_CHANGED = 0x1,
-};
-
-enum EntityDormancyType_t
-{
-	ENTITY_NOT_DORMANT = 0x0,
-	ENTITY_DORMANT = 0x1,
-	ENTITY_SUSPENDED = 0x2,
-};
-
 // Event queue //
 
-struct alignas(8) CPulseArgumentPack
+struct CPulseArgumentPack
 {
-	uint8 pad_0000[144];
-};
+	// The data of each argument's value
+	CUtlVectorFixed<void*, 16> m_Values;
 
-struct CPulseInputParamMap
-{
-	KeyValues3 m_KV3;
-	KeyValues3::Data_t m_KV3Data;
+	// AMNOTE: Holds the argument names, types and values
+	CPulseCallContextInfo* m_pInfo;
 };
 
 struct EntityIOQueuePrioritizedEvent_t
@@ -137,24 +95,10 @@ public:
 
 // Entity notifications //
 
-struct EntityNotification_t
-{
-	CEntityIdentity* m_pEntity;
-};
-
 struct EntityDormancyChange_t : EntityNotification_t
 {
 	EntityDormancyType_t m_nPrevDormancyType;
 	EntityDormancyType_t m_nNewDormancyType;
-};
-
-struct EntitySpawnInfo_t : EntityNotification_t
-{
-	const CEntityKeyValues* m_pKeyValues;
-	int m_Unk1;
-	uint16 m_SpawnOrder;
-	uint8 m_Depth;
-	uint8 m_OriginalSpawnOrder;
 };
 
 struct EntityActivation_t : EntityNotification_t
@@ -170,53 +114,44 @@ struct PostDataUpdateInfo_t : EntityNotification_t
 	DataUpdateType_t m_updateType;
 };
 
-struct CEntityPrecacheContext
-{
-	const CEntityKeyValues* m_pKeyValues;
-	IEntityPrecacheConfiguration* m_pConfig;
-	IEntityResourceManifest* m_pManifest;
-};
+// Called with each added resource once it's loaded, to add the resources it uses
+typedef void (*SecondaryPrecacheCallback_t)(ResourceHandle_t hResource, const CEntityPrecacheContext* pContext);
 
-struct SecondaryPrecacheMemberCallback_t
-{
-	void (CEntityInstance::*pfnPrecache)(ResourceHandle_t hResource, const CEntityPrecacheContext* pContext);
-};
-
-class IEntityListener
+abstract_class IEntityResourceManifest
 {
 public:
-	virtual void OnEntityCreated(CEntityInstance* pEntity) {};
-	virtual void OnEntitySpawned(CEntityInstance* pEntity) {};
-	virtual void OnEntityDeleted(CEntityInstance* pEntity) {};
-	virtual void OnEntityParentChanged(CEntityInstance* pEntity, CEntityInstance* pNewParent) {};
+	virtual void AddResource(const char* pszResourceName) = 0;
+	virtual void AddResource(const char* pszResourceName, SecondaryPrecacheCallback_t pfnCallback) = 0;
+	virtual void AddResource(const char* pszResourceName, CEntityInstance* pEntity, SecondaryPrecacheMemberCallback_t callback) = 0;
+
+	// Adds the compiled resource of a "file://{resources}/" panorama path
+	virtual void AddPanoramaResource(const char* pszPath) = 0;
+
+	virtual void AddPrecachedSubclass(const CUtlStringToken& subclassId) = 0;
+	virtual bool IsSubclassPrecached(const CUtlStringToken& subclassId) = 0;
+
+	// AMNOTE: Writes "<p2>/<p1>/<p3>/<pszFilter or __nofilter__>.ventl" to pOut
+	virtual void ConstructEntityLumpResourceName(const char* p1, const char* p2, const char* p3, const char* pszFilter, CBufferString* pOut) = 0;
+
+	// Logs each added resource when enabled
+	virtual void SetVerbose(bool bVerbose) = 0;
+
+	// AMNOTE: True when the game resource manifest that owns this one was allocated with RESOURCE_MANIFEST_LOAD_DEFAULT load behavior
+	virtual bool unk101() = 0;
+
+	virtual int GetResourceCount() = 0;
+	virtual const char* const* GetResourceNames() = 0;
+
+	// Sets the entity whose resources are being added, returns the previous one
+	virtual EntitySpawnInfo_t SetCurrentPrecacheEntity(const EntitySpawnInfo_t& info) = 0;
 };
 
-struct CEntityResourceManifestLock
+struct EntityNameHandles_t
 {
-	IEntityResourceManifestBuilder* m_pBuilder;
-	matrix3x4a_t m_vSpawnGroupOffset;
-	SpawnGroupHandle_t m_hSpawnGroup;
-	IEntityPrecacheConfiguration* m_pConfig;
-	IEntityResourceManifest* m_pManifest;
-	bool m_bIsLocked;
-	bool m_bPrecacheEnable;
-};
+	CUtlVector<CEntityHandle> m_Handles;
 
-// Manifest executor //
-
-abstract_class IEntityResourceManifestBuilder
-{
-public:
-	virtual void		BuildResourceManifest(SpawnGroupHandle_t hSpawnGroup, int nCount, const EntitySpawnInfo_t *pEntities, const matrix3x4a_t *vWorldOffset, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest) = 0;
-	virtual void		BuildResourceManifest(SpawnGroupHandle_t hSpawnGroup, int iCount, const CEntityKeyValues *pKeyValues, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest) = 0;
-	virtual void		BuildResourceManifest(SpawnGroupHandle_t hSpawnGroup, const CUtlVector<const CEntityKeyValues*>* pEntityKeyValues, const char* pFilterName /* Usually, "mapload" and "cs_respawn"/"respawn". See CSpawnGroupEntityFilterRegistrar ctors */, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest) = 0;
-	virtual void		BuildResourceManifest(const char* pManifestNameOrGroupName, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest) = 0;
-	virtual void		BuildResourceManifest(EntityResourceManifestCreationCallback_t callback, void* pContext, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest) = 0;
-	virtual void		BuildResourceManifestForEntity(const char* pEntityDesignerName, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest, CKV3Arena* pEntityAllocator) = 0;
-	virtual void		InvokePrecacheCallback(ResourceHandle_t hResource, const EntitySpawnInfo_t* info, IEntityPrecacheConfiguration* pConfig, IEntityResourceManifest* pResourceManifest, SecondaryPrecacheMemberCallback_t callback) = 0;
-	virtual void		AddRefKeyValues(const CEntityKeyValues* pKeyValues) = 0;
-	virtual void		ReleaseKeyValues(const CEntityKeyValues* pKeyValues) = 0;
-	virtual void		LockResourceManifest(bool bLock, CEntityResourceManifestLock* const context) = 0;
+	// Held by the entry in the name map and by iterators over the handles, freed when it drops to 0
+	int m_nRefCount;
 };
 
 class CEntitySystem : public IEntityResourceManifestBuilder
@@ -253,7 +188,7 @@ private:
 		unsigned int operator()( uint32 n ) const { return MurmurHash2( &n, sizeof( uint32 ), 0x3501A674 ); } 
 	};
 
-	typedef CUtlDelegate<bool( IParsingErrorListener *, CEntityInstance *, void *, const ComponentUnserializerFieldInfo_t *, const KeyValues3 * )> KeyUnserializerDelegate;
+	typedef CUtlDelegate<bool( IErrorListener *, CEntityInstance *, void *, const ComponentUnserializerFieldInfo_t *, const KeyValues3 * )> KeyUnserializerDelegate;
 
 public:
 	virtual						~CEntitySystem() = 0;
@@ -281,6 +216,9 @@ public:
 	inline CEntityInstance *GetEntityInstance( CEntityIdentity *ident ) { return ident ? ident->m_pInstance : nullptr; }
 	inline CEntityInstance *GetEntityInstance( CEntityIndex entnum ) { return GetEntityInstance( GetEntityIdentity( entnum ) ); }
 	inline CEntityInstance *GetEntityInstance( const CEntityHandle &hEnt ) { return GetEntityInstance( GetEntityIdentity( hEnt ) ); }
+
+	// AMNOTE: The controller of player slot N is the entity at index N + 1, only slots below CGlobalVars::maxClients have one
+	inline CEntityInstance *GetPlayerController( CPlayerSlot slot ) { return slot.IsValid() ? GetEntityInstance( CEntityIndex( slot.Get() + 1 ) ) : nullptr; }
 
 	inline void AddEntityKeyValuesAllocatorRef() { ++m_nEntityKeyValuesAllocatorRefCount; }
 	inline void ReleaseEntityKeyValuesAllocatorRef()
@@ -312,7 +250,7 @@ public:
 	CUtlOrderedMap<const char*, CEntityClass*, CDefFastCaselessStringLess, uint16> m_entClassesByCPPClassname;
 	CUtlOrderedMap<const char*, CEntityClass*, CDefFastCaselessStringLess, uint16> m_entClassesByClassname;
 	CUtlOrderedMap<const char*, CEntityComponentHelper*, CDefFastCaselessStringLess, uint16> m_entityComponentHelpers;
-	CUtlOrderedMap<CUtlSymbolLarge, CUtlVector<CEntityHandle>*, CDefLess<CUtlSymbolLarge>, uint16> m_entityNames;
+	CUtlOrderedMap<CUtlSymbolLarge, EntityNameHandles_t*, CDefLess<CUtlSymbolLarge>, uint16> m_entityNames;
 
 	CEventQueue m_EventQueue;
 	CUtlVectorFixedGrowable<IEntityIONotify*, 2> m_entityIONotifiers;
@@ -325,13 +263,17 @@ public:
 	int m_nEntityKeyValuesAllocatorRefCount;
 	float m_flChangeCallbackSpewThreshold;
 
-	bool m_Unk1;
-	bool m_Unk2;
-	bool m_Unk3;
-	bool m_bEnableAutoDeletionExecution;
-	bool m_Unk4;
-	bool m_Unk5;
-	bool m_Unk6;
+	bool m_bPerformDeletionPostCreation;
+	bool m_bPerformDeallocationPostCreation;
+	bool m_bInvokePostDataUpdates;
+	bool m_bAutoExecuteQueuedDeletion;
+	bool m_bProfilingResourceSystem;
+	bool m_bInRestoreActivation;
+
+	// AMNOTE: Write-only: set with m_bInRestoreActivation while restored entities are activated and restored afterwards, true when they come from an adjacent level
+	bool m_unk101;
+
+	bool m_bProcessingQueuedActivatesAndPostDataUpdates;
 
 	CUtlVector<CreationInfo_t> m_queuedCreations;
 	CUtlVector<PostDataUpdateInfo_t> m_queuedPostDataUpdates;
@@ -354,27 +296,14 @@ public:
 	CUtlHashtable<CUtlString, void*> m_EntityMaterialAttributes;
 };
 
-class CGameEntitySystem : public CEntitySystem
+abstract_class IEntityIONotify
 {
-	struct SpawnGroupEntityFilterInfo_t
-	{
-		ISpawnGroupEntityFilter* m_pFilter;
-		SpawnGroupEntityFilterType_t m_nType;
-	};
-
 public:
-	virtual ~CGameEntitySystem() = 0;
-
-	void AddListenerEntity(IEntityListener* pListener);
-	void RemoveListenerEntity(IEntityListener* pListener);
-
-public:
-	int m_iNetworkedEntCount;
-	int m_iNonNetworkedSavedEntCount;
-	CUtlDict<SpawnGroupEntityFilterInfo_t> m_spawnGroupEntityFilters;
-	CUtlVector<IEntityListener*> m_entityListeners;
-	IEntity2SaveRestore* m_pEntity2SaveRestore;
-	IEntity2Networkables* m_pEntity2Networkables;
+	virtual void OnEntityIOOutput( CEntityInstance* pActivator, CEntityInstance* pCaller, const EntityIOConnection_t* pConnection, const CPulseArgumentPack* pArgs ) = 0;
+	// Called after the target handled the input
+	virtual void OnEntityIOInput( CEntityInstance* pTarget, const char* pszInput, CEntityInstance* pActivator, CEntityInstance* pCaller, const CVariant* pValue, const CPulseArgumentPack* pArgs ) = 0;
+	virtual void OnEntityIOConnectionRemoved( CEntityInstance* pActivator, CEntityInstance* pCaller, const EntityIOConnection_t* pConnection ) = 0;
+	virtual void OnOutputFired( CEntityInstance* pActivator, CEntityInstance* pCaller, float flDelay, const EntOutput_t* pOutput, const CPulseArgumentPack* pArgs ) = 0;
 };
 
 abstract_class IEntityFindFilter

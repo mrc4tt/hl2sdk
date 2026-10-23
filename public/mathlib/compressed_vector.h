@@ -27,9 +27,6 @@
 
 #include "mathlib/mathlib.h"
 
-#if defined( _X360 )
-#pragma bitfield_order( push, lsb_to_msb )
-#endif
 //=========================================================
 // fit a 3D vector into 32 bits
 //=========================================================
@@ -488,7 +485,7 @@ protected:
 			biased_exponent = ( (biased_exponent - float16bias + float32bias) * (biased_exponent != 0) ) << 23;
 			mantissa <<= (23-10);
 
-			*((unsigned *)&output) = ( mantissa | biased_exponent | sign );
+			output.rawFloat = BitsToFloat( mantissa | biased_exponent | sign );
 		}
 		
 		return output.rawFloat;
@@ -599,10 +596,6 @@ inline void Vector2d32::Init( vec_t ix, vec_t iy )
 	x.SetFloat(ix);
 	y.SetFloat(iy);
 }
-
-#if defined( _X360 )
-#pragma bitfield_order( pop )
-#endif
 
 #endif
 

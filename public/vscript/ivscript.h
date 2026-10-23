@@ -97,8 +97,8 @@
 
 #include "platform.h"
 #include "datamap.h"
-#include "appframework/IAppSystem.h"
-#include "tier1/functors.h"
+#include "appframework/iappsystem.h"
+#include "tier0/functors.h"
 #include "tier0/memdbgon.h"
 
 #if defined( _WIN32 )
@@ -116,6 +116,7 @@
 #endif
 
 class CUtlBuffer;
+class KeyValues;
 class CCommand;
 class CCommandContext;
 
@@ -129,6 +130,7 @@ enum ScriptLanguage_t
 {
 	SL_NONE,
 	SL_LUA,
+	SL_NOP,
 
 	SL_DEFAULT = SL_LUA
 };
@@ -157,14 +159,13 @@ public:
 // 
 //-----------------------------------------------------------------------------
 
-DECLARE_POINTER_HANDLE( HSCRIPT );
 #define INVALID_HSCRIPT ((HSCRIPT)-1)
 
 //-----------------------------------------------------------------------------
 // 
 //-----------------------------------------------------------------------------
 
-#include "variant.h"
+#include "entity2/variant.h"
 
 typedef fieldtype_t ScriptDataType_t;
 typedef CVariant ScriptVariant_t;
@@ -186,7 +187,7 @@ DECLARE_DEDUCE_FIELDTYPE( FIELD_CHARACTER, char );
 DECLARE_DEDUCE_FIELDTYPE( FIELD_HSCRIPT, HSCRIPT );
 DECLARE_DEDUCE_FIELDTYPE( FIELD_VARIANT, ScriptVariant_t );
 
-#define ScriptDeduceType( T ) ScriptDeducer<T>::FIELD_TYPE
+#define ScriptDeduceType( T ) ((ScriptDataType_t)ScriptDeducer<T>::FIELD_TYPE)
 
 //---------------------------------------------------------
 
@@ -242,10 +243,10 @@ typedef bool (*ScriptBindingFunc_t)( void *pFunction, void *pContext, ScriptVari
 struct ScriptFunctionBinding_t
 {
 	ScriptFuncDescriptor_t	m_desc;
-    ScriptClassDesc_t      *m_pClassDesc;
+	ScriptClassDesc_t *		m_pClassDesc;
 	ScriptBindingFunc_t		m_pfnBinding;
 	void *					m_pFunction;
-	unsigned				m_flags;
+	ScriptFuncBindingFlags_t m_flags;
 };
 
 //---------------------------------------------------------
@@ -282,11 +283,11 @@ struct ScriptClassDesc_t
 
 // Lower level macro primitives
 #define ScriptInitFunctionBinding( pScriptFunction, func )									ScriptInitFunctionBindingNamed( pScriptFunction, func, #func )
-#define ScriptInitFunctionBindingNamed( pScriptFunction, func, scriptName )					do { ScriptInitFuncDescriptorNamed( (&(pScriptFunction)->m_desc), func, scriptName ); (pScriptFunction)->m_pfnBinding = ScriptCreateBinding( &func ); (pScriptFunction)->m_pFunction = (void *)&func; } while (0)
+#define ScriptInitFunctionBindingNamed( pScriptFunction, func, scriptName )					do { ScriptInitFuncDescriptorNamed( (&(pScriptFunction)->m_desc), func, scriptName ); (pScriptFunction)->m_pClassDesc = NULL; (pScriptFunction)->m_pfnBinding = ScriptCreateBinding( &func ); (pScriptFunction)->m_pFunction = (void *)&func; (pScriptFunction)->m_flags = ScriptFuncBindingFlags_t(0); } while (0)
 
 #define ScriptInitMemberFunctionBinding( pScriptFunction, class, func )						ScriptInitMemberFunctionBinding_( pScriptFunction, class, func, #func )
 #define ScriptInitMemberFunctionBindingNamed( pScriptFunction, class, func, scriptName )	ScriptInitMemberFunctionBinding_( pScriptFunction, class, func, scriptName )
-#define ScriptInitMemberFunctionBinding_( pScriptFunction, class, func, scriptName ) 		do { ScriptInitMemberFuncDescriptor_( (&(pScriptFunction)->m_desc), class, func, scriptName ); (pScriptFunction)->m_pfnBinding = ScriptCreateBinding( ((class *)0), &class::func ); 	(pScriptFunction)->m_pFunction = ScriptConvertFuncPtrToVoid( &class::func ); (pScriptFunction)->m_flags = SF_MEMBER_FUNC;  } while (0)
+#define ScriptInitMemberFunctionBinding_( pScriptFunction, class, func, scriptName ) 		do { ScriptInitMemberFuncDescriptor_( (&(pScriptFunction)->m_desc), class, func, scriptName ); (pScriptFunction)->m_pClassDesc = NULL; (pScriptFunction)->m_pfnBinding = ScriptCreateBinding( ((class *)0), &class::func ); 	(pScriptFunction)->m_pFunction = ScriptConvertFuncPtrToVoid( &class::func ); (pScriptFunction)->m_flags = SF_MEMBER_FUNC;  } while (0)
 
 #define ScriptInitClassDesc( pClassDesc, class, pBaseClassDesc )							ScriptInitClassDescNamed( pClassDesc, class, pBaseClassDesc, #class )
 #define ScriptInitClassDescNamed( pClassDesc, class, pBaseClassDesc, scriptName )			ScriptInitClassDescNamed_( pClassDesc, class, pBaseClassDesc, scriptName )
@@ -295,14 +296,14 @@ struct ScriptClassDesc_t
 #define ScriptInitClassDescNamed_( pClassDesc, class, pBaseClassDesc, scriptName )			do { (pClassDesc)->m_pszScriptName = scriptName; (pClassDesc)->m_pszClassname = #class; (pClassDesc)->m_pBaseDesc = pBaseClassDesc; } while ( 0 )
 
 #define ScriptAddFunctionToClassDesc( pClassDesc, class, func, description  )				ScriptAddFunctionToClassDescNamed( pClassDesc, class, func, #func, description )
-#define ScriptAddFunctionToClassDescNamed( pClassDesc, class, func, scriptName, description ) do { ScriptFunctionBinding_t *pBinding = &((pClassDesc)->m_FunctionBindings[(pClassDesc)->m_FunctionBindings.AddToTail()]); pBinding->m_desc.m_pszDescription = description; ScriptInitMemberFunctionBindingNamed( pBinding, class, func, scriptName );  } while (0)
+#define ScriptAddFunctionToClassDescNamed( pClassDesc, class, func, scriptName, description ) do { ScriptFunctionBinding_t *pBinding = &((pClassDesc)->m_FunctionBindings[(pClassDesc)->m_FunctionBindings.AddToTail()]); pBinding->m_desc.m_pszDescription = description; ScriptInitMemberFunctionBindingNamed( pBinding, class, func, scriptName ); pBinding->m_pClassDesc = pClassDesc; } while (0)
 
 //-----------------------------------------------------------------------------
 // 
 //-----------------------------------------------------------------------------
 
 #define ScriptRegisterFunction( pVM, func, description )									ScriptRegisterFunctionNamed( pVM, func, #func, description )
-#define ScriptRegisterFunctionNamed( pVM, func, scriptName, description )					do { static ScriptFunctionBinding_t binding; binding.m_desc.m_pszDescription = description; binding.m_desc.m_Parameters.RemoveAll(); ScriptInitFunctionBindingNamed( &binding, func, scriptName ); pVM->RegisterFunction( &binding ); } while (0)
+#define ScriptRegisterFunctionNamed( pVM, func, scriptName, description )					do { static ScriptFunctionBinding_t binding; binding.m_desc.m_pszDescription = description; ScriptInitFunctionBindingNamed( &binding, func, scriptName ); pVM->RegisterFunction( &binding ); } while (0)
 
 //-----------------------------------------------------------------------------
 // 
@@ -395,6 +396,7 @@ enum ScriptErrorLevel_t
 
 typedef void ( *ScriptOutputFunc_t )( const char *pszText );
 typedef bool ( *ScriptErrorFunc_t )( ScriptErrorLevel_t eLevel, const char *pszText );
+typedef bool ( *ScriptKeyValuesFromTableFunc_t )( KeyValues *pKeyValues, const char *pszKey, const ScriptVariant_t &value, void *pContext );
 
 //-----------------------------------------------------------------------------
 // 
@@ -411,13 +413,16 @@ enum ScriptStatus_t
 	SCRIPT_RUNNING,
 };
 
-class CSquirrelMetamethodDelegateImpl;
-
 class IScriptVM
 {
 public:
+	virtual ~IScriptVM() {}
+
 	virtual bool Init() = 0;
 	virtual void Shutdown() = 0;
+
+	// AMNOTE: Makes ExecuteFunction fail with SCRIPT_ERROR from then on, Run is unaffected
+	virtual void DisableExecuteFunction() = 0;
 
 	virtual ScriptLanguage_t GetLanguage() = 0;
 	virtual const char *GetLanguageName() = 0;
@@ -430,7 +435,7 @@ public:
 	
 	virtual void EnableLocalDiskAccess() = 0;
 	
-	virtual void ForwardConsoleCommand(const CCommandContext &, const CCommand &) = 0;
+	virtual bool ForwardConsoleCommand(const CCommandContext &, const CCommand &) = 0;
 
 	//--------------------------------------------------------
  
@@ -455,11 +460,14 @@ public:
 	virtual ScriptStatus_t Run( HSCRIPT hScript, HSCRIPT hScope = NULL, bool bWait = true ) = 0;
 	virtual ScriptStatus_t Run( HSCRIPT hScript, bool bWait ) = 0;
 
+	// AMNOTE: Returns the script or function that Run or ExecuteFunction is currently running, NULL outside of them
+	virtual HSCRIPT GetExecutingScript() = 0;
+
 	//--------------------------------------------------------
 	// Scope
 	//--------------------------------------------------------
 	virtual HSCRIPT CreateScope( const char *pszScope, HSCRIPT hParent = NULL ) = 0;
-	virtual void ReferenceScope( HSCRIPT hScript ) = 0;
+	virtual HSCRIPT ReferenceScope( HSCRIPT hScript ) = 0;
 	virtual void ReleaseScope( HSCRIPT hScript ) = 0;
 
 	//--------------------------------------------------------
@@ -513,27 +521,29 @@ public:
 	bool SetValue( const char *pszKey, const ScriptVariant_t &value )																{ return SetValue(NULL, pszKey, value ); }
 
 	virtual bool SetEnumValue(HSCRIPT hScope, const char *pszEnumName, const char *pszValueName, int value, const char *pszDescription) = 0;
-	virtual bool CreateKeyValuesFromTable(HSCRIPT hScope, const char* unk1, void* fUnk, void* unk2) = 0;
 
 	virtual void CreateTable( ScriptVariant_t &Table ) = 0;
 	virtual bool IsTable( HSCRIPT hScope ) = 0;
 	virtual int	GetNumTableEntries( HSCRIPT hScope ) = 0;
 	virtual int GetNumElements( HSCRIPT hScope ) = 0;
 	virtual int GetKeyValue( HSCRIPT hScope, int nIterator, ScriptVariant_t *pKey, ScriptVariant_t *pValue ) = 0;
+	// The caller owns the returned KeyValues. pfnCallback may be NULL, keys it returns true for are not added
+	virtual KeyValues *CreateKeyValuesFromTable(HSCRIPT hScope, const char* pszName, ScriptKeyValuesFromTableFunc_t pfnCallback, void* pContext) = 0;
 
 	virtual bool GetValue( HSCRIPT hScope, const char *pszKey, ScriptVariant_t *pValue ) = 0;
 	virtual bool GetValue( HSCRIPT hScope, int nIndex, ScriptVariant_t *pValue ) = 0;
 	bool GetValue( const char *pszKey, ScriptVariant_t *pValue )																	{ return GetValue(NULL, pszKey, pValue ); }
 	virtual bool GetScalarValue( HSCRIPT hScope, ScriptVariant_t *pValue ) = 0;
+	virtual void CopyValue( const ScriptVariant_t &src, ScriptVariant_t *pDest ) = 0;
 	virtual void ReleaseValue( ScriptVariant_t &value ) = 0;
 
 	virtual bool ClearValue( HSCRIPT hScope, const char *pszKey ) = 0;
 	bool ClearValue( const char *pszKey)																							{ return ClearValue( NULL, pszKey ); }
 	
-	virtual HSCRIPT CreateArray( ScriptVariant_t & ) = 0;
+	virtual void CreateArray( ScriptVariant_t &Array ) = 0;
 	virtual bool IsArray( HSCRIPT hScope ) = 0;
 	virtual int GetArrayCount( HSCRIPT hScope ) = 0;
-	virtual void ArrayAddToTail( HSCRIPT hScope, const ScriptVariant_t &pValue ) = 0;
+	virtual int ArrayAddToTail( HSCRIPT hScope, const ScriptVariant_t &pValue ) = 0;
 	
 	//----------------------------------------------------------------------------
 
@@ -555,14 +565,12 @@ public:
 
 	virtual HSCRIPT CopyHandle( HSCRIPT hScope ) = 0;
 
-	virtual int GetIdentity( HSCRIPT hScope ) = 0;
+	// Returns 0 on success
+	virtual int LoadAndCompileScriptFile( const char *pszFile, const char *pszPathId, HSCRIPT *pScript ) = 0;
 
-	class ISquirrelMetamethodDelegate;
+	virtual void GetSourceId( HSCRIPT hScope, char *pBuf, int nBufSize ) = 0;
 
-	virtual void *MakeSquirrelMetamethod_Get( HSCRIPT&, const char*, ISquirrelMetamethodDelegate *, bool ) = 0;
-	virtual void DestroySquirrelMetamethod_Get( CSquirrelMetamethodDelegateImpl * ) = 0;
-
-	virtual int GetKeyValue2( HSCRIPT hScope, int iterator, ScriptVariant_t *pKey, ScriptVariant_t *pValue ) = 0;
+	virtual bool AreHandlesEqual( HSCRIPT hScript1, HSCRIPT hScript2 ) = 0;
 
 	//----------------------------------------------------------------------------
 	// Call API

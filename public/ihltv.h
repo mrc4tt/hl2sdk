@@ -14,41 +14,53 @@
 #endif
 
 #include "interface.h"
+#include "interfaces/interfaces.h"
 
-class IServer;
+class CNetworkGameServerBase;
+class CPlayerSlot;
 class IHLTVDirector;
-class IGameEvent;
-struct netadr_t;
+class INetworkMessageInternal;
+class CNetMessage;
+class CUtlBuffer;
+class CSteamID;
 class CGameInfo;
+struct netadr_t;
 
 //-----------------------------------------------------------------------------
 // Interface the HLTV module exposes to the engine
 //-----------------------------------------------------------------------------
-#define INTERFACEVERSION_HLTVSERVER	"HLTVServer001"
-
 class IHLTVServer : public IBaseInterface
 {
 public:
 	virtual	~IHLTVServer() {}
 
-	virtual	IServer	*GetBaseServer( void ) = 0; // get HLTV base server interface
+	virtual	CNetworkGameServerBase *GetBaseServer( void ) = 0; // get HLTV base server interface
 	virtual	IHLTVDirector *GetDirector( void ) = 0;	// get director interface
-	virtual	int		GetHLTVSlot( void ) = 0; // return entity index-1 of HLTV in game
+	virtual	CPlayerSlot GetHLTVSlot( void ) = 0; // return the player slot of HLTV in game
 	virtual float	GetOnlineTime( void ) = 0; // seconds since broadcast started
 	virtual void	GetLocalStats( int &proxies, int &slots, int &specs ) = 0; 
+	// AMNOTE: Sums the hltv_proxies, hltv_slots and hltv_clients of the connected relay proxies
+	virtual void	GetRelayStats( int &proxies, int &slots, int &specs ) = 0;
 	virtual void	GetGlobalStats( int &proxies, int &slots, int &specs ) = 0; 
 
+	// AMNOTE: Network system's local address with the SourceTV port, on master and relay alike
+	virtual const netadr_t *GetLocalAddress( void ) = 0;
 	virtual const netadr_t *GetRelayAddress( void ) = 0; // returns relay address
 
 	virtual bool	IsMasterProxy( void ) = 0; // true, if this is the HLTV master proxy
+	virtual bool	IsTVRelay( void ) = 0;
 	virtual bool	IsDemoPlayback( void ) = 0; // true if this is a HLTV demo
+	virtual bool	IsActive( void ) = 0;
 
-	virtual void	BroadcastEvent(IGameEvent *event) = 0; // send a director command to all specs
+	virtual void	BroadcastEvent( INetworkMessageInternal *pEvent, const CNetMessage *pData ) = 0; // send a director command to all specs
 	
 	virtual bool	IsRecording() = 0;
 	virtual const char	*GetRecordingDemoFilename ( void ) = 0;
+	// AMNOTE: -1 until the first broadcast frame arrives
+	virtual int	GetFirstTick( void ) = 0;
 	virtual void	StartAutoRecording( void ) = 0;
-	virtual void	StopAutoRecording( const CGameInfo *pInfo ) = 0;	
+	virtual void	StopRecording( const CGameInfo *pGameInfo ) = 0;
+	virtual void	AddSaveGame( CSteamID steamID, uint64, int, const CUtlBuffer &buf ) = 0;
 };
 
 #endif

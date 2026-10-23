@@ -1,0 +1,205 @@
+# vim: set ts=2 sw=2 tw=99 noet ft=python:
+import os
+
+# Compiles every header on its own, and the sources that plugins compile themselves, into a library
+# configured and linked through hl2sdk-manifests like plugins are. A header missing an include or out of date
+# with the rest of the SDK fails the build, and so does a declaration the SDK's libraries don't export.
+
+builder.SetBuildFolder('check')
+
+# Only meant to be included from another header
+ExcludedHeaders = [
+  'public/vscript/vscript_templates.h',
+]
+
+# Copied from the Steamworks SDK, whose other headers are included through these
+SteamHeaders = [
+  'public/steam/steam_api.h',
+  'public/steam/steam_gameserver.h',
+]
+
+def IsChecked(path):
+  if path in ExcludedHeaders:
+    return False
+  if path.startswith('public/steam/'):
+    return path in SteamHeaders
+  return True
+
+headers = []
+for folder in ['common', 'game', 'public']:
+  for root, dirs, files in os.walk(os.path.join(builder.sourcePath, folder)):
+    for file in files:
+      if not file.endswith('.h'):
+        continue
+      path = os.path.relpath(os.path.join(root, file), builder.sourcePath).replace('\\', '/')
+      if IsChecked(path):
+        headers.append(path)
+
+sources = []
+for header in sorted(headers):
+  content = '#include "{}"\n'.format(os.path.join(builder.sourcePath, header).replace('\\', '/'))
+  sources.append(builder.AddOutputFile(os.path.join('headers', header.replace('/', '_') + '.cpp'), content.encode('utf-8')))
+
+for folder in ['entity2', 'tier0_perproject']:
+  for file in sorted(os.listdir(os.path.join(builder.sourcePath, folder))):
+    if file.endswith('.cpp'):
+      sources.append(os.path.join(folder, file))
+sources.append(os.path.join('public', 'tier0', 'memoverride.cpp'))
+
+# Templates only compile when instantiated, so these instantiate the ones plugins use. An explicit
+# instantiation compiles every member of a class, but not those of its base classes, so bases are named too.
+for file in sorted(os.listdir(os.path.join(builder.sourcePath, 'tests'))):
+  if file.endswith('.cpp'):
+    sources.append(os.path.join('tests', file))
+
+SdkHelpers = builder.Eval(os.path.join(os.path.abspath(builder.options.hl2sdk_manifests), 'SdkHelpers.ambuild'), {
+  'Project': 'sdkcheck'
+})
+SdkHelpers.find_sdk_path = lambda name: builder.sourcePath
+SdkHelpers.findSdks(builder, HL2SDK.targets, [builder.options.sdk])
+sdk = SdkHelpers.sdks[builder.options.sdk]
+
+CheckProtos = [
+  os.path.join(builder.sourcePath, 'common', 'network_connection.proto'),
+  os.path.join(builder.sourcePath, 'common', 'networkbasetypes.proto'),
+  os.path.join(builder.sourcePath, 'common', 'netmessages.proto'),
+  os.path.join(builder.sourcePath, 'common', 'valveextensions.proto'),
+  # Messages for the tests, from a proto without imports
+  os.path.join(builder.sourcePath, 'common', 'source2_steam_stats.proto'),
+]
+
+project = builder.LibraryProject('sdkcheck')
+project.sources = sources
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = project.Configure(sdk_target.cxx, 'sdkcheck', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+  compiler = binary.compiler
+
+  # Fail on symbols the libraries don't have, which shared libraries allow by default
+  if compiler.target.platform == 'linux':
+    compiler.linkflags += ['-Wl,-z,defs']
+
+  binary.custom = [builder.tools.Protoc(protoc = sdk_target.protoc, sources = CheckProtos)]
+
+builder.Add(project)
+
+# Runs KeyValues3 against tier0, so it needs the game's tier0 to start
+kv3test = builder.ProgramProject('keyvalues3_test')
+kv3test.sources = [
+  os.path.join('tests', 'run', 'keyvalues3.cpp'),
+  os.path.join('tier0_perproject', 'keyvalues3.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = kv3test.Configure(sdk_target.cxx, 'keyvalues3_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(kv3test)
+
+# Iterates the utl containers, which allocate through tier0
+itertest = builder.ProgramProject('utliterators_test')
+itertest.sources = [
+  os.path.join('tests', 'run', 'utliterators.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = itertest.Configure(sdk_target.cxx, 'utliterators_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(itertest)
+
+# Adds and finds symbols through CUtlSymbolTableLarge's alternate keys
+symtest = builder.ProgramProject('utlsymbollarge_test')
+symtest.sources = [
+  os.path.join('tests', 'run', 'utlsymbollarge.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = symtest.Configure(sdk_target.cxx, 'utlsymbollarge_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(symtest)
+
+# Purges CUtlLeanVectors, including over external buffers
+lvtest = builder.ProgramProject('utlleanvector_test')
+lvtest.sources = [
+  os.path.join('tests', 'run', 'utlleanvector.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = lvtest.Configure(sdk_target.cxx, 'utlleanvector_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(lvtest)
+
+# Resizes, moves, copies (also from NULL) and self-assigns CUtlVectors, and assigns the other vectors on CUtlVectorBase from rvalues
+vectest = builder.ProgramProject('utlvector_test')
+vectest.sources = [
+  os.path.join('tests', 'run', 'utlvector.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = vectest.Configure(sdk_target.cxx, 'utlvector_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(vectest)
+
+# Copies CCommands, also full-length ones, which tokenizes them again with a test cvar system's break set
+cmdtest = builder.ProgramProject('ccommand_test')
+cmdtest.sources = [
+  os.path.join('tests', 'run', 'ccommand.cpp'),
+  os.path.join('tier0_perproject', 'convar.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = cmdtest.Configure(sdk_target.cxx, 'ccommand_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(cmdtest)
+
+# Inserts dupes and non copyable elements into a CUtlRBTree and a CUtlOrderedMap
+maptest = builder.ProgramProject('utlrbtree_test')
+maptest.sources = [
+  os.path.join('tests', 'run', 'utlrbtree.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = maptest.Configure(sdk_target.cxx, 'utlrbtree_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(maptest)
+
+# Copies and moves CBufferStrings through tier0
+bstest = builder.ProgramProject('bufferstring_test')
+bstest.sources = [
+  os.path.join('tests', 'run', 'bufferstring.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = bstest.Configure(sdk_target.cxx, 'bufferstring_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+
+builder.Add(bstest)
+
+# Serializes KeyValues into CmdKeyValues messages and parses them back through tier0
+cmdkvtest = builder.ProgramProject('cmdkeyvalues_test')
+cmdkvtest.sources = [
+  os.path.join('tests', 'run', 'cmdkeyvalues.cpp'),
+  os.path.join('public', 'tier0', 'memoverride.cpp'),
+]
+
+for sdk_target in SdkHelpers.sdk_targets:
+  binary = cmdkvtest.Configure(sdk_target.cxx, 'cmdkeyvalues_test', '{0} - {1}'.format(HL2SDK.tag, sdk_target.cxx.target.arch))
+  SdkHelpers.configureCxx(builder, binary, sdk)
+  binary.custom = [builder.tools.Protoc(protoc = sdk_target.protoc, sources = CheckProtos)]
+
+builder.Add(cmdkvtest)

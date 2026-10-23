@@ -18,7 +18,7 @@
 #include "const.h"
 #include "in_buttons.h"
 
-#define TICK_INTERVAL			(1 / 64)
+#define TICK_INTERVAL			(1.0f / 64.0f) // AMNOTE: CS2 runs at a fixed 64 ticks
 
 #define TIME_TO_TICKS( dt )		( (int)( 0.5f + (float)(dt) / TICK_INTERVAL ) )
 #define TICKS_TO_TIME( t )		( TICK_INTERVAL *( t ) )
@@ -269,6 +269,34 @@ enum DamageTypes_t
 	DMG_HEADSHOT		= (1 << 19)
 };
 
+enum TakeDamageFlags_t : uint64
+{
+	DFLAG_NONE								= 0,
+	DFLAG_SUPPRESS_HEALTH_CHANGES			= (1ull << 0),
+	DFLAG_SUPPRESS_PHYSICS_FORCE			= (1ull << 1),
+	DFLAG_SUPPRESS_EFFECTS					= (1ull << 2),
+	DFLAG_PREVENT_DEATH						= (1ull << 3),
+	DFLAG_FORCE_DEATH						= (1ull << 4),
+	DFLAG_ALWAYS_GIB						= (1ull << 5),
+	DFLAG_NEVER_GIB							= (1ull << 6),
+	DFLAG_REMOVE_NO_RAGDOLL					= (1ull << 7),
+	DFLAG_SUPPRESS_DAMAGE_MODIFICATION		= (1ull << 8),
+	DFLAG_ALWAYS_FIRE_DAMAGE_EVENTS			= (1ull << 9),
+	DFLAG_RADIUS_DMG						= (1ull << 10),
+	DFLAG_FORCEREDUCEARMOR_DMG				= (1ull << 11),
+	DFLAG_SUPPRESS_INTERRUPT_FLINCH			= (1ull << 12),
+	DFLAG_IGNORE_DESTRUCTIBLE_PARTS			= (1ull << 13),
+	DFLAG_SUPPRESS_BREAKABLES				= (1ull << 14),
+	DFLAG_FORCE_PHYSICS_FORCE				= (1ull << 15),
+	DFLAG_SUPPRESS_SCREENSPACE_DAMAGE_FX	= (1ull << 16),
+	DFLAG_ALLOW_NON_AUTHORITATIVE			= (1ull << 17),
+
+	DMG_LASTDFLAG							= DFLAG_ALLOW_NON_AUTHORITATIVE,
+
+	DFLAG_IGNORE_ARMOR						= (1ull << 18),
+	DFLAG_SUPPRESS_UTILREMOVE				= (1ull << 19),
+};
+
 // settings for m_takedamage
 #define	DAMAGE_NO				0
 #define DAMAGE_EVENTS_ONLY		1		// Call damage functions, but don't modify health
@@ -515,49 +543,41 @@ struct ModelScale
 
 #include "soundflags.h"
 
-struct CSoundParameters;
-typedef short HSOUNDSCRIPTHANDLE;
 //-----------------------------------------------------------------------------
 // Purpose: Aggregates and sets default parameters for EmitSound function calls
 //-----------------------------------------------------------------------------
 struct EmitSound_t
 {
 	EmitSound_t() :
-		m_nChannel( 0 ),
-		m_pSoundName( 0 ),
+		m_pSoundName( nullptr ),
 		m_flVolume( VOL_NORM ),
-		m_SoundLevel( SNDLVL_NONE ),
-		m_nFlags( 0 ),
-		m_nPitch( PITCH_NORM ),
-		m_pOrigin( 0 ),
 		m_flSoundTime( 0.0f ),
-		m_pflSoundDuration( 0 ),
-		m_bEmitCloseCaption( true ),
-		m_bWarnOnMissingCloseCaption( false ),
-		m_bWarnOnDirectWaveReference( false ),
-		m_nSpeakerEntity( -1 ),
-		m_UtlVecSoundOrigin(),
-		m_hSoundScriptHandle( -1 )
+		m_unk001( -1 ),
+		m_nForceGuid( 0 ),
+		m_nSourceSoundscape( 0 ),
+		m_nPitch( PITCH_NORM ),
+		m_unk101( 1 ),
+		m_unk102( 0 ),
+		m_unk103( 0 ),
+		m_bFindSourceSoundscape( false ),
+		m_bUseOrigin( false )
 	{
 	}
 
-	EmitSound_t( const CSoundParameters &src );
-
-	int							m_nChannel;
-	char const					*m_pSoundName;
+	const char					*m_pSoundName;
+	Vector						m_vecOrigin;
 	float						m_flVolume;
-	soundlevel_t				m_SoundLevel;
-	int							m_nFlags;
-	int							m_nPitch;
-	const Vector				*m_pOrigin;
-	float						m_flSoundTime; ///< NOT DURATION, but rather, some absolute time in the future until which this sound should be delayed
-	float						*m_pflSoundDuration;
-	bool						m_bEmitCloseCaption;
-	bool						m_bWarnOnMissingCloseCaption;
-	bool						m_bWarnOnDirectWaveReference;
-	int							m_nSpeakerEntity;
-	mutable CUtlVector< Vector >	m_UtlVecSoundOrigin;  ///< Actual sound origin(s) (can be multiple if sound routed through speaker entity(ies) )
-	mutable HSOUNDSCRIPTHANDLE		m_hSoundScriptHandle;
+	float						m_flSoundTime;
+	int							m_unk001;
+	uint32						m_nForceGuid;
+	// AMNOTE: Sound event hash of the source soundscape, 0 when not set
+	uint32						m_nSourceSoundscape;
+	int16						m_nPitch;
+	uint8						m_unk101 : 1;
+	uint8						m_unk102 : 1;
+	uint8						m_unk103 : 1;
+	uint8						m_bFindSourceSoundscape : 1;
+	uint8						m_bUseOrigin : 1;
 };
 
 #define MAX_ACTORS_IN_SCENE 16

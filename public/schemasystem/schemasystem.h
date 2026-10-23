@@ -6,81 +6,114 @@
 #endif
 
 #include "tier0/threadtools.h"
-#include "tier1/convar.h"
-#include "tier1/utlstring.h"
-#include "tier1/UtlStringMap.h"
-#include "tier1/utltshash.h"
-#include "tier1/utlvector.h"
-#include "appframework/IAppSystem.h"
-#include "schemasystem/schematypes.h"
+#include "tier0/convar.h"
+#include "tier0/utlstring.h"
+#include "tier0/utlstringmap.h"
+#include "tier0/utltshash.h"
+#include "tier0/utlvector.h"
+#include "appframework/iappsystem.h"
+#include "tier0/utlmap.h"
+#include "schemalib/schematype.h"
+#include "schemalib/schemaclassinfo.h"
+#include "schemalib/schemaenuminfo.h"
+#include "schemasystem/ischemasystem.h"
 
 class CBufferString;
 class CKV3Arena;
 struct ResourceManifestDesc_t;
 
-enum SchemaTypeScope_t : uint8
-{
-	SCHEMA_GLOBAL_TYPE_SCOPE = 0,
-	SCHEMA_MODULE_LOCAL_TYPE_SCOPE,
-	SCHEMA_DEFAULT_TYPE_SCOPE,
-};
-
-enum SchemaHierarchyIteration_t
-{
-	SCHEMA_ITER_NONE = 0,
-	SCHEMA_ITER_SINGLE_PARENT,
-	SCHEMA_ITER_MULTI_PARENT
-};
-
-typedef void (*CompleteModuleRegistrationCallbackFn_t)(void*);
-
-abstract_class ISchemaSystemTypeScope
+template <class K, class V>
+class CSchemaPtrMap
 {
 public:
-	virtual CSchemaClassInfo* InstallSchemaClassBinding( const char* pszModuleName, CSchemaClassInfo* pClassInfo ) = 0;
-	virtual CSchemaEnumInfo* InstallSchemaEnumBinding( const char* pszModuleName, CSchemaEnumInfo* pEnumInfo ) = 0;
+	CUtlOrderedMap<K, V, CDefLess<K>, unsigned short> m_Map;
+	CThreadFastMutex m_Mutex;
+};
 
-	virtual SchemaMetaInfoHandle_t<CSchemaClassInfo> FindDeclaredClass( const char* pszClassName ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaEnumInfo> FindDeclaredEnum( const char* pszEnumName ) = 0;
-
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Builtin> FindBuiltinTypeByName( const char* pszBuiltinName ) = 0;
-
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Builtin> 		Type_Builtin( SchemaBuiltinType_t eBuiltinType ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Ptr>				Type_Ptr( CSchemaType* pObjectType ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic>			Type_Atomic( const char* pszAtomicName, uint16 nSize, uint8 nAlignment ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_T>		Type_Atomic_T( const char* pszAtomicName, uint16 nSize, uint8 nAlignment, CSchemaType* pTemplateType ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_CollectionOfT> Type_Atomic_CollectionOfT( const char* pszAtomicName, uint16 nSize, uint8 nAlignment, uint16 nElementSize, CSchemaType* pTemplateType, uint64 nFixedBufferCount, SchemaCollectionManipulatorFn_t manipulator ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_TT>		Type_Atomic_TT( const char* pszAtomicName, uint16 nSize, uint8 nAlignment, CSchemaType* pTemplateType, CSchemaType* pTemplateType2 ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_I>		Type_Atomic_I( const char* pszAtomicName, uint16 nSize, uint8 nAlignment, int nInteger ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_DeclaredClass>	Type_DeclaredClass( const char* pszClassName ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_DeclaredEnum>	Type_DeclaredEnum( const char* pszEnumName ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_FixedArray>		Type_FixedArray( CSchemaType* pElementType, int nElementCount, uint16 nElementSize, uint8 nElementAlignment ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_FixedArray>		Type_FixedArray_Multidimensional( CSchemaType* pElementType, uint16 nElementSize, uint8 nElementAlignment, ... ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Bitfield>		Type_Bitfield( int nSize ) = 0;
-
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic>			FindType_Atomic( int nAtomicID ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_T>		FindType_Atomic_T( int nAtomicID, CSchemaType* pTemplateType ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_CollectionOfT> FindType_Atomic_CollectionOfT( int nAtomicID, CSchemaType* pTemplateType, SchemaCollectionManipulatorFn_t manipulator ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_TT> 		FindType_Atomic_TT( int nAtomicID, CSchemaType* pTemplateType, CSchemaType* pTemplateType2 ) = 0;
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Atomic_I> 		FindType_Atomic_I( int nAtomicID, int nInteger ) = 0;
+struct AtomicTypeInfo_T_t
+{
+	bool operator<( const AtomicTypeInfo_T_t& rhs ) const 
+	{ 
+		if ( m_nAtomicID != rhs.m_nAtomicID )
+			return m_nAtomicID < rhs.m_nAtomicID;
+		
+		if ( m_pTemplateType != rhs.m_pTemplateType )
+			return m_pTemplateType < rhs.m_pTemplateType;
+		
+		return (void *)m_pfnManipulator < (void *)rhs.m_pfnManipulator;
+	}
 	
-	virtual CSchemaType_DeclaredClass* FindType_DeclaredClass( const char* pszClassName ) = 0;
-	virtual CSchemaType_DeclaredEnum* FindType_DeclaredEnum( const char* pszEnumName ) = 0;
+	int m_nAtomicID;
+	CSchemaType* m_pTemplateType;
+	SchemaCollectionManipulatorFn_t m_pfnManipulator;
+};
 
-	virtual CSchemaClassInfo* FindRawClassBinding( const char* pszClassName ) = 0;
-	virtual CSchemaClassInfo* FindRawClassBinding( uint nClassID ) = 0;
-	virtual CSchemaEnumInfo* FindRawEnumBinding( const char* pszEnumName ) = 0;
-	virtual CSchemaEnumInfo* FindRawEnumBinding( uint nEnumID ) = 0;
+struct AtomicTypeInfo_CollectionOfT_t
+{
+	bool operator<( const AtomicTypeInfo_CollectionOfT_t &rhs ) const
+	{
+		if(m_nAtomicID != rhs.m_nAtomicID)
+			return m_nAtomicID < rhs.m_nAtomicID;
 
-	virtual const char* GetScopeName() = 0;
-	virtual bool IsGlobalScope() = 0;
+		if(m_pTemplateType != rhs.m_pTemplateType)
+			return m_pTemplateType < rhs.m_pTemplateType;
 
-	virtual void MarkClassAsRequiringGlobalPromotion( const CSchemaClassInfo* pClassInfo ) = 0;
-	virtual void MarkEnumAsRequiringGlobalPromotion( const CSchemaEnumInfo* pEnumInfo ) = 0;
+		if(m_nFixedBufferCount != rhs.m_nFixedBufferCount)
+			return m_nFixedBufferCount < rhs.m_nFixedBufferCount;
 
-	virtual void ResolveAtomicInfoThreadsafe( const SchemaAtomicTypeInfo_t** ppAtomicInfo, const char* pszAtomicName, int nAtomicID ) = 0;
-	virtual void ResolveEnumInfoThreadsafe( const CSchemaEnumInfo** ppEnumInfo, const char* pszEnumName ) = 0;
-	virtual void ResolveClassInfoThreadsafe( const CSchemaClassInfo** ppClassInfo, const char* pszClassName ) = 0;
+		return (void *)m_pfnManipulator < (void *)rhs.m_pfnManipulator;
+	}
+
+	int m_nAtomicID;
+	CSchemaType *m_pTemplateType;
+	uint64 m_nFixedBufferCount;
+	SchemaCollectionManipulatorFn_t m_pfnManipulator;
+};
+
+struct AtomicTypeInfo_TT_t
+{
+	bool operator<( const AtomicTypeInfo_TT_t& rhs ) const 
+	{ 
+		if ( m_nAtomicID != rhs.m_nAtomicID )
+			return m_nAtomicID < rhs.m_nAtomicID;
+		
+		if ( m_pTemplateType != rhs.m_pTemplateType )
+			return m_pTemplateType < rhs.m_pTemplateType;
+		
+		return m_pTemplateType2 < rhs.m_pTemplateType2;
+	}
+	
+	int m_nAtomicID;
+	CSchemaType* m_pTemplateType;
+	CSchemaType* m_pTemplateType2;
+};
+
+struct AtomicTypeInfo_I_t
+{
+	bool operator<( const AtomicTypeInfo_I_t& rhs ) const 
+	{ 
+		if ( m_nAtomicID != rhs.m_nAtomicID )
+			return m_nAtomicID < rhs.m_nAtomicID;
+
+		return m_nInteger < rhs.m_nInteger;
+	}
+	
+	int m_nAtomicID;
+	int m_nInteger;
+};
+
+struct TypeAndCountInfo_t
+{
+	bool operator<( const TypeAndCountInfo_t& rhs ) const 
+	{ 
+		if ( m_nElementCount != rhs.m_nElementCount )
+			return m_nElementCount < rhs.m_nElementCount;
+		
+		return m_pElementType < rhs.m_pElementType;
+	}
+	
+	int m_nElementCount;
+	CSchemaType* m_pElementType;
 };
 
 class CSchemaSystemTypeScope : public ISchemaSystemTypeScope
@@ -109,54 +142,6 @@ public:
 	CUtlTSHash<CSchemaEnumInfo*, 256, uint> m_EnumBindings;
 };
 
-#define SCHEMASYSTEM_INTERFACE_VERSION "SchemaSystem_001"
-
-abstract_class ISchemaSystem : public IAppSystem
-{
-public:
-	virtual CSchemaSystemTypeScope* GlobalTypeScope() = 0;
-	virtual CSchemaSystemTypeScope* FindOrCreateTypeScopeForModule( const char* pszModuleName, const char** ppszBindingName = NULL ) = 0;
-	virtual CSchemaSystemTypeScope* FindTypeScopeForModule( const char* pszModuleName, const char** ppszBindingName = NULL ) = 0;
-	virtual CSchemaSystemTypeScope* GetTypeScopeForBinding( SchemaTypeScope_t eTypeScope, const char* pszModuleName, const char** ppszBindingName = NULL ) = 0;
-	
-	virtual bool DefaultTypeScopeIsLocal() = 0;
-	
-	virtual SchemaMetaInfoHandle_t<CSchemaClassInfo> FindClassByScopedName( const char* pszScopedName ) = 0;
-	virtual void ScopedNameForClass( const CSchemaClassInfo* pClassInfo, CBufferString& scopedName ) = 0;
-	
-	virtual SchemaMetaInfoHandle_t<CSchemaEnumInfo> FindEnumByScopedName( const char* pszScopedName ) = 0;
-	virtual void ScopedNameForEnum( const CSchemaEnumInfo* pEnumInfo, CBufferString& scopedName ) = 0;
-	
-	virtual void FindDescendentsOfClass( const CSchemaClassInfo* pClassInfo, int, CUtlVector<const CSchemaClassInfo*> *descendents, bool ) = 0;
-	virtual void LoadSchemaDataForModules( const char** ppszModules, int nModules ) = 0;
-	
-	virtual const char* GetClassModuleName( const CSchemaClassInfo* pClassInfo ) = 0;
-	virtual const char* GetClassProjectName( const CSchemaClassInfo* pClassInfo ) = 0;
-	
-	virtual const char* GetEnumModuleName( const CSchemaEnumInfo* pEnumInfo ) = 0;
-	virtual const char* GetEnumProjectName( const CSchemaEnumInfo* pEnumInfo ) = 0;
-	
-	virtual bool SchemaSystemIsReady() = 0;
-	virtual void VerifySchemaBindingConsistency( bool ) = 0;
-	virtual void CompleteModuleRegistration( const char* pszModuleName ) = 0;
-	virtual void RegisterAtomicType( const SchemaAtomicTypeInfo_t* pAtomicType ) = 0;
-	
-	virtual void PrintSchemaStats( const char* pszOptions ) = 0;
-	virtual void PrintSchemaMetaStats( const char* pszOptions ) = 0;
-	
-	virtual void RegisterAtomics( const char* pszModuleName, const char* pszProjectName, CSchemaType** ppSchemaTypes, int, SchemaAtomicTypeInfo_t** ppAtomicTypes ) = 0;
-	virtual void RegisterEnums( const char* pszModuleName, const char* pszProjectName, CSchemaType** ppSchemaTypes, int, CSchemaEnumInfo** ppEnumInfos ) = 0;
-	virtual bool RegisterClasses( const char* pszModuleName, const char* pszProjectName, CSchemaType** ppSchemaTypes, int, CSchemaClassInfo** ppClassInfos, CBufferString* pErrorStr ) = 0;
-	virtual void ValidateClasses( CSchemaClassInfo** ppClassInfos ) = 0;
-	
-	virtual bool ConvertOldIntrospectedResourceDataToKV3( void*, void*, void*, CKV3Arena*, const char* ) = 0;
-	virtual void FindClassesByMeta( const char* pszMetaName, SchemaHierarchyIteration_t iter_type, CUtlVector<const CSchemaClassInfo*> *classes ) = 0;
-	
-	virtual SchemaMetaInfoHandle_t<CSchemaType_Builtin> GetSchemaBuiltinType( SchemaBuiltinType_t eBuiltinType ) = 0;
-	
-	virtual ~ISchemaSystem() = 0;
-};
-
 class CSchemaSystem : public ISchemaSystem
 {
 	struct DetectedSchemaMismatch_t
@@ -172,13 +157,7 @@ class CSchemaSystem : public ISchemaSystem
 		uintp m_minAddr;
 		uintp m_maxAddr;
 	};
-	
-	struct CompleteModuleRegistrationCallback_t
-	{
-		CompleteModuleRegistrationCallbackFn_t m_pfnCallback;
-		void* m_pArgument;
-	};
-	
+
 public:
 	CUtlVector<ResourceManifestDesc_t*> m_ResourceManifestDescs;
 	int m_nNumConnections;
@@ -210,8 +189,6 @@ public:
 	int m_nIgnored;
 	int m_nRedundant;
 	size_t m_nIgnoredBytes;
-	
-	CUtlVector<CompleteModuleRegistrationCallback_t> m_CompleteModuleRegistrationCallbacks;
 };
 
 #endif // SCHEMASYSTEM_H

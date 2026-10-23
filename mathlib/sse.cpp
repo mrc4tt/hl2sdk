@@ -62,8 +62,8 @@ _PS_EXTERN_CONST(am_pi_o_2, (float)(M_PI / 2.0));
 _PS_EXTERN_CONST(am_2_o_pi, (float)(2.0 / M_PI));
 _PS_EXTERN_CONST(am_pi_o_4, (float)(M_PI / 4.0));
 _PS_EXTERN_CONST(am_4_o_pi, (float)(4.0 / M_PI));
-_PS_EXTERN_CONST_TYPE(am_sign_mask, int32, 0x80000000);
-_PS_EXTERN_CONST_TYPE(am_inv_sign_mask, int32, ~0x80000000);
+_PS_EXTERN_CONST_TYPE(am_sign_mask, uint32, 0x80000000);
+_PS_EXTERN_CONST_TYPE(am_inv_sign_mask, uint32, ~0x80000000);
 _PS_EXTERN_CONST_TYPE(am_min_norm_pos,int32, 0x00800000);
 _PS_EXTERN_CONST_TYPE(am_mant_mask, int32, 0x7f800000);
 _PS_EXTERN_CONST_TYPE(am_inv_mant_mask, int32, ~0x7f800000);
@@ -186,8 +186,8 @@ float _SSE_RSqrtFast(float x)
 	 __asm__ __volatile__(
 		"rsqrtss %1, %%xmm0 \n\t"
 		"movss %%xmm0, %0 \n\t"
-		: "=m" (x)
-		: "m" (rroot)
+		: "=m" (rroot)
+		: "m" (x)
 		: "%xmm0"
 	);
 #else

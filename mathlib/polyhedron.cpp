@@ -10,7 +10,7 @@
 #include "mathlib/vmatrix.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include "tier1/utlvector.h"
+#include "tier0/utlvector.h"
 
 
 
@@ -34,7 +34,7 @@ CPolyhedron *ConvertLinkedGeometryToPolyhedron( GeneratePolyhedronFromPlanes_Uno
 //#define DEBUG_DUMP_POLYHEDRONS_TO_NUMBERED_GLVIEWS //dumps successfully generated polyhedrons
 
 #ifdef _DEBUG
-#include "filesystem.h"
+#include "filesystem/ifilesystem.h"
 void DumpPolyhedronToGLView( const CPolyhedron *pPolyhedron, const char *pFilename, const VMatrix *pTransform );
 void DumpPlaneToGlView( const float *pPlane, float fGrayScale, const char *pszFileName, const VMatrix *pTransform );
 void DumpLineToGLView( const Vector &vPoint1, const Vector &vColor1, const Vector &vPoint2, const Vector &vColor2, float fThickness, FILE *pFile );
@@ -318,10 +318,10 @@ CPolyhedron *ClipPolyhedron( const CPolyhedron *pExistingPolyhedron, const float
 														pExistingPolyhedron->iPolygonCount );
 		}
 
-		memcpy( pReturn->pVertices, pExistingPolyhedron->pVertices, sizeof( Vector ) * pReturn->iVertexCount );
+		memcpy( (void *)pReturn->pVertices, pExistingPolyhedron->pVertices, sizeof( Vector ) * pReturn->iVertexCount );
 		memcpy( pReturn->pLines, pExistingPolyhedron->pLines, sizeof( Polyhedron_IndexedLine_t ) * pReturn->iLineCount );
 		memcpy( pReturn->pIndices, pExistingPolyhedron->pIndices, sizeof( Polyhedron_IndexedLineReference_t ) * pReturn->iIndexCount );
-		memcpy( pReturn->pPolygons, pExistingPolyhedron->pPolygons, sizeof( Polyhedron_IndexedPolygon_t ) * pReturn->iPolygonCount );
+		memcpy( (void *)pReturn->pPolygons, pExistingPolyhedron->pPolygons, sizeof( Polyhedron_IndexedPolygon_t ) * pReturn->iPolygonCount );
 
 		return pReturn;
 	}

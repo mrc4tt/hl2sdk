@@ -14,17 +14,12 @@
 #pragma once
 #endif
 
-#include "Color.h"
+#include "color.h"
+#include "tier0/loggingtypes.h"
+#include "tier0/logginglisteners.h"
+#include "tier0/loggingresponsepolicies.h"
 #include "icommandline.h"
 #include <stdio.h>
-
-// For XBX_** functions
-#if defined( _X360 )
-#include "xbox/xbox_console.h"
-#endif
-
-// Used by CColorizedLoggingListener
-#include "tier0/win32consoleio.h"
 
 /*
 	---- Logging System ----
@@ -86,405 +81,16 @@
 
 class CLoggingSystem;
 class CAtomicMutex;
+class CMiniDumpComment;
+class CUtlString;
+template< class T, class I, size_t UNK > class CUtlVectorMemory_Growable;
+template< class T, class I, class A > class CUtlVector;
 
-//-----------------------------------------------------------------------------
-// Maximum length of a sprintf'ed logging message.
-//-----------------------------------------------------------------------------
-const int MAX_LOGGING_MESSAGE_LENGTH = 2048;
-
-//-----------------------------------------------------------------------------
-// Maximum length of a channel or tag name.
-//-----------------------------------------------------------------------------
-const int MAX_LOGGING_IDENTIFIER_LENGTH = 32;
-
-//-----------------------------------------------------------------------------
-// Maximum number of logging channels.  Increase if needed.
-//-----------------------------------------------------------------------------
-const int MAX_LOGGING_CHANNEL_COUNT = 256;
-
-//-----------------------------------------------------------------------------
-// Maximum number of logging tags across all channels.  Increase if needed.
-//-----------------------------------------------------------------------------
-const int MAX_LOGGING_TAG_COUNT = 1024;
-
-//-----------------------------------------------------------------------------
-// Maximum number of characters across all logging tags. Increase if needed.
-//-----------------------------------------------------------------------------
-const int MAX_LOGGING_TAG_CHARACTER_COUNT = 8192;
-
-//-----------------------------------------------------------------------------
-// Maximum number of concurrent logging listeners in a given logging state.
-//-----------------------------------------------------------------------------
-const int MAX_LOGGING_LISTENER_COUNT = 16;
-
-//-----------------------------------------------------------------------------
-// An invalid color set on a channel to imply that it should use
-// a device-dependent default color where applicable.
-//-----------------------------------------------------------------------------
-const Color UNSPECIFIED_LOGGING_COLOR( 0, 0, 0, 0 );
-
-//-----------------------------------------------------------------------------
-// An ID returned by the logging system to refer to a logging channel.
-//-----------------------------------------------------------------------------
-typedef int LoggingChannelID_t;
-
-//-----------------------------------------------------------------------------
-// A sentinel value indicating an invalid logging channel ID.
-//-----------------------------------------------------------------------------
-const LoggingChannelID_t INVALID_LOGGING_CHANNEL_ID = -1;
-
-//-----------------------------------------------------------------------------
-// An handle returned by the logging system to refer to a tag.
-//-----------------------------------------------------------------------------
-typedef int LoggingTagHandle_t;
-
-//-----------------------------------------------------------------------------
-// The severity of a logging operation.
-//-----------------------------------------------------------------------------
-enum LoggingSeverity_t
-{
-	//-----------------------------------------------------------------------------
-	// A debug message.
-	//-----------------------------------------------------------------------------
-	LS_DETAILED = 1,
-
-	//-----------------------------------------------------------------------------
-	// An informative logging message.
-	//-----------------------------------------------------------------------------
-	LS_MESSAGE = 2,
-
-	//-----------------------------------------------------------------------------
-	// A warning, typically non-fatal
-	//-----------------------------------------------------------------------------
-	LS_WARNING = 3,
-
-	//-----------------------------------------------------------------------------
-	// A message caused by an Assert**() operation.
-	//-----------------------------------------------------------------------------
-	LS_ASSERT = 4,
-
-	//-----------------------------------------------------------------------------
-	// An error, typically fatal/unrecoverable.
-	//-----------------------------------------------------------------------------
-	LS_ERROR = 5,
-
-	//-----------------------------------------------------------------------------
-	// A placeholder level, higher than any legal value.
-	// Not a real severity value!
-	//-----------------------------------------------------------------------------
-	LS_HIGHEST_SEVERITY = 6,
-};
-
-enum LoggingVerbosity_t
-{
-	//-----------------------------------------------------------------------------
-	// Turns off all spew.
-	//-----------------------------------------------------------------------------
-	LV_OFF = 0,
-
-	//-----------------------------------------------------------------------------
-	// Turns on vital logs.
-	//-----------------------------------------------------------------------------
-	LV_ESSENTIAL = 1,
-
-	//-----------------------------------------------------------------------------
-	// Turns on most messages.
-	//-----------------------------------------------------------------------------
-	LV_DEFAULT = 2,
-
-	//-----------------------------------------------------------------------------
-	// Allows for walls of text that are usually useful.
-	//-----------------------------------------------------------------------------
-	LV_DETAILED = 3,
-
-	//-----------------------------------------------------------------------------
-	// Allows everything.
-	//-----------------------------------------------------------------------------
-	LV_MAX = 4,
-};
-
-//-----------------------------------------------------------------------------
-// Action which should be taken by logging system as a result of 
-// a given logged message.
-//
-// The logging system invokes ILoggingResponsePolicy::OnLog() on
-// the specified policy object, which returns a LoggingResponse_t.
-//-----------------------------------------------------------------------------
-enum LoggingResponse_t
-{
-	LR_CONTINUE,
-	LR_DEBUGGER,
-	LR_ABORT,
-};
-
-//-----------------------------------------------------------------------------
-// Logging channel behavior flags, set on channel creation.
-//-----------------------------------------------------------------------------
-enum LoggingChannelFlags_t
-{
-	//-----------------------------------------------------------------------------
-	// Indicates that the spew is only relevant to interactive consoles.
-	//-----------------------------------------------------------------------------
-	LCF_CONSOLE_ONLY = 0x00000001,
-
-	//-----------------------------------------------------------------------------
-	// Indicates that spew should not be echoed to any output devices.
-	// A suitable logging listener must be registered which respects this flag 
-	// (e.g. a file logger).
-	//-----------------------------------------------------------------------------
-	LCF_DO_NOT_ECHO = 0x00000002,
-};
-
-enum ModificationFlags_t : int
+enum ModificationFlags_t : uint8
 {
 	MODIFIED_FLAGS = 1,
 	MODIFIED_VERBOSITY = 2,
 	MODIFIED_SPEWCOLOR = 4,
-};
-
-//-----------------------------------------------------------------------------
-// A callback function used to register tags on a logging channel 
-// during initialization.
-//-----------------------------------------------------------------------------
-typedef void ( *RegisterTagsFunc )( LoggingChannelID_t channelID );
-
-struct LeafCodeInfo_t
-{
-	const char *m_File;
-	int m_Line;
-	const char *m_Function;
-};
-
-struct LoggingMetaData_t
-{
-	LoggingMetaData_t *m_pNext;
-	uint64 m_TypeID;
-	uint8 *m_pData;
-	size_t m_nDataSize;
-	uint8 m_nVerbosity;
-};
-
-//-----------------------------------------------------------------------------
-// A context structure passed to logging listeners and response policy classes.
-//-----------------------------------------------------------------------------
-struct LoggingContext_t
-{
-	// ID of the channel being logged to.
-	LoggingChannelID_t m_ChannelID;
-	// Flags associated with the channel.
-	LoggingChannelFlags_t m_Flags;
-	// Severity of the logging event.
-	LoggingSeverity_t m_Severity;
-	// Color of logging message if one was specified to Log_****() macro.
-	// If not specified, falls back to channel color.
-	// If channel color is not specified, this value is UNSPECIFIED_LOGGING_COLOR
-	// and indicates that a suitable default should be chosen.
-	Color m_Color;
-	const LoggingMetaData_t *m_MetaData;
-};
-
-//-----------------------------------------------------------------------------
-// Interface for classes to handle logging output.
-//
-// The Log() function of this class is called synchronously and serially
-// by the logging system on all registered instances of ILoggingListener
-// in the current "logging state".
-//
-// Derived classes may do whatever they want with the message (write to disk,
-// write to console, send over the network, drop on the floor, etc.).
-//
-// In general, derived classes should do one, simple thing with the output
-// to allow callers to register multiple, orthogonal logging listener classes.
-//-----------------------------------------------------------------------------
-class ILoggingListener
-{
-public:
-	virtual void Log( const LoggingContext_t *pContext, const tchar *pMessage ) = 0;
-	virtual void OnFlush() { };
-	virtual void OnChannelRegistered( LoggingChannelID_t channelID ) { };
-	virtual void OnChannelVerbosityChanged( LoggingChannelID_t channelID ) { };
-	virtual void OnChannelFlagsChanged( LoggingChannelID_t channelID ) { };
-};
-
-//-----------------------------------------------------------------------------
-// Interface for policy classes which determine how to behave when a 
-// message is logged.
-//
-// Can return:
-//   LR_CONTINUE (continue execution)
-//   LR_DEBUGGER (break into debugger if one is present, otherwise continue)
-//   LR_ABORT (terminate process immediately with a failure code of 1)
-//-----------------------------------------------------------------------------
-class ILoggingResponsePolicy
-{
-public:
-	virtual LoggingResponse_t OnLog( const LoggingContext_t *pContext ) = 0;
-};
-
-//////////////////////////////////////////////////////////////////////////
-// Common Logging Listeners & Logging Response Policies
-//////////////////////////////////////////////////////////////////////////
-
-//-----------------------------------------------------------------------------
-// A basic logging listener which prints to stdout and the debug channel.
-//-----------------------------------------------------------------------------
-class CSimpleLoggingListener : public ILoggingListener
-{
-public:
-	CSimpleLoggingListener( bool bQuietPrintf = false, bool bQuietDebugger = false ) : 
-	  m_bQuietPrintf( bQuietPrintf ), 
-		  m_bQuietDebugger( bQuietDebugger ) 
-	  { 
-	  }
-
-	  virtual void Log( const LoggingContext_t *pContext, const tchar *pMessage )
-	  {
-#ifdef _X360
-		  if ( !m_bQuietDebugger && XBX_IsConsoleConnected() )
-		  {
-			  // send to console
-			  XBX_DebugString( XMAKECOLOR( 0,0,0 ), pMessage );
-		  }
-		  else
-#endif
-		  {
-#ifndef _CERT
-			  if ( !m_bQuietPrintf )
-			  {
-				  Plat_Printf( _T("%s"), pMessage );
-			  }
-#endif
-
-#ifdef _WIN32
-			  if ( !m_bQuietDebugger && Plat_IsInDebugSession() )
-			  {
-				  Plat_DebugString( pMessage );
-			  }
-#endif
-		  }
-	  }
-
-	  // If set to true, does not print anything to stdout.
-	  bool m_bQuietPrintf;
-	  // If set to true, does not print anything to debugger.
-	  bool m_bQuietDebugger;
-};
-
-//-----------------------------------------------------------------------------
-// A basic logging listener for GUI applications
-//-----------------------------------------------------------------------------
-class CSimpleWindowsLoggingListener : public ILoggingListener
-{
-public:
-	virtual void Log( const LoggingContext_t *pContext, const tchar *pMessage )
-	{
-		if ( Plat_IsInDebugSession() )
-		{
-			Plat_DebugString( pMessage );
-		}
-		if ( pContext->m_Severity == LS_ERROR )
-		{
-			if ( Plat_IsInDebugSession() )
-				DebuggerBreak();
-			
-			if ( !Plat_IsInTestMode() )
-				Plat_MessageBox( "Error", pMessage );
-		}
-	}
-};
-
-
-//-----------------------------------------------------------------------------
-// ** NOTE FOR INTEGRATION **
-// This was copied over from source 2 rather than integrated because 
-// source 2 has more significantly refactored tier0 logging.
-//
-// A logging listener with Win32 console API color support which which prints 
-// to stdout and the debug channel.
-//-----------------------------------------------------------------------------
-#if !defined _X360
-class CColorizedLoggingListener : public CSimpleLoggingListener
-{
-public:
-	CColorizedLoggingListener( bool bQuietPrintf = false, bool bQuietDebugger = false ) : CSimpleLoggingListener( bQuietPrintf, bQuietDebugger )
-	{
-		InitWin32ConsoleColorContext( &m_ColorContext );
-	}
-
-	virtual void Log( const LoggingContext_t *pContext, const tchar *pMessage )
-	{
-		if ( !m_bQuietPrintf )
-		{
-			int nPrevColor = -1;
-
-			if ( pContext->m_Color != UNSPECIFIED_LOGGING_COLOR )
-			{
-				nPrevColor = SetWin32ConsoleColor( &m_ColorContext,
-					pContext->m_Color.r(), pContext->m_Color.g(), pContext->m_Color.b(), 
-					MAX( MAX( pContext->m_Color.r(), pContext->m_Color.g() ), pContext->m_Color.b() ) > 128 );
-			}
-
-			Plat_Printf( _T("%s"), pMessage );
-
-			if ( nPrevColor >= 0 )
-			{
-				RestoreWin32ConsoleColor( &m_ColorContext, nPrevColor );
-			}
-		}
-
-#ifdef _WIN32
-		if ( !m_bQuietDebugger && Plat_IsInDebugSession() )
-		{
-			Plat_DebugString( pMessage );
-		}
-#endif
-	}
-
-	Win32ConsoleColorContext_t m_ColorContext;
-};
-#endif // !_X360
-
-
-//-----------------------------------------------------------------------------
-// Default logging response policy used when one is not specified.
-//-----------------------------------------------------------------------------
-class CDefaultLoggingResponsePolicy : public ILoggingResponsePolicy
-{
-public:
-	virtual LoggingResponse_t OnLog( const LoggingContext_t *pContext )
-	{
-		if ( pContext->m_Severity == LS_ASSERT && !CommandLine()->FindParm( "-noassert" ) ) 
-		{
-			return LR_DEBUGGER;
-		}
-		else if ( pContext->m_Severity == LS_ERROR )
-		{
-			return LR_ABORT;
-		}
-		else
-		{
-			return LR_CONTINUE;
-		}
-	}
-};
-
-//-----------------------------------------------------------------------------
-// A logging response policy which never terminates the process, even on error.
-//-----------------------------------------------------------------------------
-class CNonFatalLoggingResponsePolicy : public ILoggingResponsePolicy
-{
-public:
-	virtual LoggingResponse_t OnLog( const LoggingContext_t *pContext )
-	{
-		if ( ( pContext->m_Severity == LS_ASSERT && !CommandLine()->FindParm( "-noassert" ) ) || pContext->m_Severity == LS_ERROR )
-		{
-			return LR_DEBUGGER;
-		}
-		else
-		{
-			return LR_CONTINUE;
-		}
-	}
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -530,8 +136,8 @@ public:
 	//-----------------------------------------------------------------------------
 	// Gets a pointer to the logging channel description.
 	//-----------------------------------------------------------------------------
-	LoggingChannel_t *GetChannel( LoggingChannelID_t channelID );
-	const LoggingChannel_t *GetChannel( LoggingChannelID_t channelID ) const;
+	LoggingChannel_t *GetChannel( LoggingChannelID_t channelID ) { return &m_RegisteredChannels[channelID]; }
+	const LoggingChannel_t *GetChannel( LoggingChannelID_t channelID ) const { return &m_RegisteredChannels[channelID]; }
 	
 	//-----------------------------------------------------------------------------
 	// Returns true if the given channel has the specified tag.
@@ -635,7 +241,7 @@ public:
 	// spew color.  Passing in UNSPECIFIED_LOGGING_COLOR for 'color' allows
 	// the logging listeners to provide a default.
 	//-----------------------------------------------------------------------------
-	LoggingResponse_t LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t *codeInfo, const LoggingMetaData_t *metaData, Color color, const tchar *pMessage );
+	LoggingResponse_t LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t *pRareOptions, const LoggingMetaData_t *metaData, Color color, const tchar *pMessage );
 	
 	// Internal data to represent a logging tag
 	struct LoggingTag_t
@@ -678,6 +284,8 @@ public:
 		char m_Name[MAX_LOGGING_IDENTIFIER_LENGTH];
 		LoggingTag_t *m_pFirstTag;
 		ModificationFlags_t m_nModifiedFields;
+		// Whether the last message logged to the channel ended with a newline
+		bool m_bLastLineComplete;
 	};
 
 private:
@@ -836,6 +444,10 @@ PLATFORM_INTERFACE LoggingVerbosity_t LoggingSystem_GetChannelVerbosity( Logging
 PLATFORM_INTERFACE void LoggingSystem_SetChannelVerbosity( LoggingChannelID_t channelID, LoggingVerbosity_t verbosity );
 PLATFORM_INTERFACE void LoggingSystem_SetChannelVerbosityByName( const char *pName, LoggingVerbosity_t verbosity );
 PLATFORM_INTERFACE void LoggingSystem_SetChannelVerbosityByTag( const char *pTag, LoggingVerbosity_t verbosity );
+// Raises the channel's verbosity to the given one if it's lower
+PLATFORM_INTERFACE void LoggingSystem_EnsureChannelVerbosity( LoggingChannelID_t channelID, LoggingVerbosity_t verbosity );
+// The lowest verbosity a channel needs to log messages of the given severity
+PLATFORM_INTERFACE LoggingVerbosity_t LoggingSystem_GetVerbosityForSeverity( LoggingSeverity_t severity );
 
 // Color is represented as an int32 due to C-linkage restrictions
 PLATFORM_INTERFACE int32 LoggingSystem_GetChannelColor( LoggingChannelID_t channelID );
@@ -843,6 +455,17 @@ PLATFORM_INTERFACE void LoggingSystem_SetChannelColor( LoggingChannelID_t channe
 
 PLATFORM_INTERFACE LoggingChannelFlags_t LoggingSystem_GetChannelFlags( LoggingChannelID_t channelID );
 PLATFORM_INTERFACE void LoggingSystem_SetChannelFlags( LoggingChannelID_t channelID, LoggingChannelFlags_t flags );
+
+// Return the channel's previous indent
+PLATFORM_INTERFACE int LoggingSystem_SetChannelIndent( LoggingChannelID_t channelID, int nIndent );
+PLATFORM_INTERFACE int LoggingSystem_ChangeChannelIndent( LoggingChannelID_t channelID, int nDelta );
+
+// Whether the last message logged to the channel ended with a newline
+PLATFORM_INTERFACE bool LoggingSystem_GetLastChannelLineComplete( LoggingChannelID_t channelID );
+PLATFORM_INTERFACE void LoggingSystem_SetLastChannelLineComplete( LoggingChannelID_t channelID, bool bComplete );
+
+// Calls ILoggingListener::OnFlush on the current and backdoor listeners
+PLATFORM_INTERFACE void LoggingSystem_Flush();
 
 //-----------------------------------------------------------------------------
 // Logs a variable-argument to a given channel with the specified severity.
@@ -855,19 +478,28 @@ PLATFORM_INTERFACE LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t chann
 PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, Color spewColor, const char *pMessageFormat, ... ) FMTFUNCTION( 4, 5 );
 PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingMetaData_t *metaData, const char *pMessageFormat, ... ) FMTFUNCTION( 4, 5 );
 PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingMetaData_t *metaData, Color spewColor, const char *pMessageFormat, ... ) FMTFUNCTION( 5, 6 );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, const char *pMessageFormat, ... ) FMTFUNCTION( 4, 5 );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, Color spewColor, const char *pMessageFormat, ... ) FMTFUNCTION( 5, 6 );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, const LoggingMetaData_t *metaData, const char *pMessageFormat, ... ) FMTFUNCTION( 5, 6 );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, const LoggingMetaData_t *metaData, Color spewColor, const char *pMessageFormat, ... ) FMTFUNCTION( 6, 7 );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, const char *pMessageFormat, ... ) FMTFUNCTION( 4, 5 );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, Color spewColor, const char *pMessageFormat, ... ) FMTFUNCTION( 5, 6 );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, const LoggingMetaData_t *metaData, const char *pMessageFormat, ... ) FMTFUNCTION( 5, 6 );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_Log( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, const LoggingMetaData_t *metaData, Color spewColor, const char *pMessageFormat, ... ) FMTFUNCTION( 6, 7 );
 
 PLATFORM_INTERFACE LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const char *pMessage );
 PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, Color spewColor, const char *pMessage );
 PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingMetaData_t *metaData, const char *pMessage );
 PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, Color spewColor, const LoggingMetaData_t *metaData, const char *pMessage );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, const char *pMessage );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, Color spewColor, const char *pMessage );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, const LoggingMetaData_t *metaData, const char *pMessage );
-PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LeafCodeInfo_t &codeInfo, Color spewColor, const LoggingMetaData_t *metaData, const char *pMessage );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, const char *pMessage );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, Color spewColor, const char *pMessage );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, const LoggingMetaData_t *metaData, const char *pMessage );
+PLATFORM_OVERLOAD LoggingResponse_t LoggingSystem_LogDirect( LoggingChannelID_t channelID, LoggingSeverity_t severity, const LoggingRareOptions_t &rareOptions, Color spewColor, const LoggingMetaData_t *metaData, const char *pMessage );
+
+//-----------------------------------------------------------------------------
+// Logs pText one line at a time, each with LoggingSystem_LogDirect.
+// nTextLength is the length of pText, or -1 when it's null terminated.
+// nMaxLines limits how many lines are logged, 0 for no limit: a positive value keeps the first lines
+// and a negative one the last ones, logging how many were omitted instead of the rest.
+// Returns the number of messages logged.
+//-----------------------------------------------------------------------------
+PLATFORM_INTERFACE int LoggingSystem_LogLines( LoggingChannelID_t channelID, LoggingSeverity_t severity, const char *pText, int nTextLength = -1, int nMaxLines = 0 );
 
 PLATFORM_INTERFACE LoggingResponse_t LoggingSystem_LogAssert( const char *pMessageFormat, ... ) FMTFUNCTION( 1, 2 );
 
@@ -875,5 +507,22 @@ PLATFORM_INTERFACE LoggingTagHandle_t LoggingSystem_FirstTag();
 PLATFORM_INTERFACE LoggingTagHandle_t LoggingSystem_NextTag( LoggingTagHandle_t currentTag );
 PLATFORM_INTERFACE LoggingTagHandle_t LoggingSystem_InvalidTag();
 PLATFORM_INTERFACE const char *LoggingSystem_TagName( LoggingTagHandle_t tag );
+
+//-----------------------------------------------------------------------------
+// Log capture: keeps the latest logged lines for crash reports.
+//-----------------------------------------------------------------------------
+PLATFORM_OVERLOAD void LoggingSystem_GetLogCapture( CUtlVector< CUtlString, int, CUtlVectorMemory_Growable< CUtlString, int, 0 > > *pLines, bool bReversed );
+PLATFORM_OVERLOAD void LoggingSystem_GetLogCapture( CMiniDumpComment *pComment, bool bReversed );
+PLATFORM_OVERLOAD bool LoggingSystem_GetLogCaptureForMiniDump( CMiniDumpComment *pComment, bool bReversed, const char *pMessage );
+
+PLATFORM_INTERFACE void LoggingSystem_AddLogCapture( const char *pFormat, ... ) FMTFUNCTION( 1, 2 );
+PLATFORM_INTERFACE void LoggingSystem_AddLogCaptureString( const char *pString );
+PLATFORM_INTERFACE void LoggingSystem_AddLogCaptureV( const char *pFormat, va_list args );
+PLATFORM_INTERFACE void LoggingSystem_ClearLogCapture();
+// Calls are counted, so capture stays enabled until it is disabled as often as enabled. Returns whether it is enabled.
+PLATFORM_INTERFACE bool LoggingSystem_EnableLogCapture( bool bEnable );
+PLATFORM_INTERFACE void LoggingSystem_EnableLogCaptureInMiniDumpComment( bool bEnable );
+PLATFORM_INTERFACE int LoggingSystem_GetMaxLogCaptureLines();
+PLATFORM_INTERFACE void LoggingSystem_SetMaxLogCaptureLines( int nLines );
 
 #endif // LOGGING_H

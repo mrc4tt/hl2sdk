@@ -8,12 +8,8 @@
 #define _MATH_PFNS_H_
 
 #include <limits>
-
-#if defined( _X360 )
-#include <xboxmath.h>
-#endif
-
-#if !defined( _X360 )
+#include <float.h>
+#include "tier0/platform.h"
 
 #include <xmmintrin.h>
 
@@ -53,58 +49,10 @@ inline float FastRecip(float x) {return 1.0f / x;}
 inline float FastSqrtEst(float x) { return FastRSqrtFast(x) * x; }
 
 
-#endif // !_X360
-
-#if defined( _X360 )
-
-FORCEINLINE float _VMX_Sqrt( float x )
-{
-	return __fsqrts( x );
-}
-
-FORCEINLINE float _VMX_RSqrt( float x )
-{
-	float rroot = __frsqrte( x );
-
-	// Single iteration NewtonRaphson on reciprocal square root estimate
-	return (0.5f * rroot) * (3.0f - (x * rroot) * rroot);
-}
-
-FORCEINLINE float _VMX_RSqrtFast( float x )
-{
-	return __frsqrte( x );
-}
-
-FORCEINLINE void _VMX_SinCos( float a, float *pS, float *pC )
-{
-	XMScalarSinCos( pS, pC, a );
-}
-
-FORCEINLINE float _VMX_Cos( float a )
-{
-	return XMScalarCos( a );
-}
-
-// the 360 has fixed hw and calls directly
-#define FastSqrt(x)			_VMX_Sqrt(x)
-#define	FastRSqrt(x)		_VMX_RSqrt(x)
-#define FastRSqrtFast(x)	_VMX_RSqrtFast(x)
-#define FastSinCos(x,s,c)	_VMX_SinCos(x,s,c)
-#define FastCos(x)			_VMX_Cos(x)
-
-inline float FastRecip(float x) {return __fres(x);}
-inline float FastSqrtEst(float x) { return __frsqrte(x) * x; }
-
-#endif // _X360
-
 // if x is infinite, return FLT_MAX
 inline float FastClampInfinity( float x )
 {
-#ifdef _X360
-	return fsel( std::numeric_limits<float>::infinity() - x, x, FLT_MAX );
-#else
 	return ( x > FLT_MAX ? FLT_MAX : x );
-#endif
 }
 
 #endif // _MATH_PFNS_H_

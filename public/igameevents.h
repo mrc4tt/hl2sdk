@@ -17,9 +17,9 @@
 #endif
 
 #include "interfaces/interfaces.h"
-#include "tier1/bitbuf.h"
-#include "tier1/keyvalues3.h"
-#include "tier1/utlstring.h"
+#include "tier0/bitbuf.h"
+#include "tier0/keyvalues3.h"
+#include "tier0/utlstring.h"
 #include "entity2/entityinstance.h"
 
 class CMsgSource1LegacyGameEvent;
@@ -117,7 +117,7 @@ public:
 	virtual void SetString( const GameEventKeySymbol_t &keySymbol, const char *value ) = 0;
 	virtual void SetPtr( const GameEventKeySymbol_t &keySymbol, void *value ) = 0;
 	
-	virtual void SetEntity( const GameEventKeySymbol_t &keySymbol, CEntityIndex value ) = 0;
+	virtual void SetEntity( const GameEventKeySymbol_t &keySymbol, CEntityHandle value ) = 0;
 	virtual void SetEntity(const GameEventKeySymbol_t &keySymbol, CEntityInstance *value) = 0;
 
 	// Also sets the _pawn key (Expects pawn entity to be passed)
@@ -131,8 +131,8 @@ public:
 
 	virtual bool HasKey( const GameEventKeySymbol_t &keySymbol ) = 0;
 
-	// Something script vm related
-	virtual void unk001() = 0;
+	// Returns a script table with the event's keys
+	virtual CVariant CreateVMTable() = 0;
 
 	virtual KeyValues3* GetDataKeys() const = 0;
 };
@@ -158,8 +158,8 @@ public:
 	// removes all and anything
 	virtual void  Reset() = 0;	
 
-	// adds a listener for a particular event
-	virtual bool AddListener( IGameEventListener2 *listener, const char *name, bool bServerSide ) = 0;
+	// adds a listener for a particular event, returns the event's index or -1 if it's unknown
+	virtual int AddListener( IGameEventListener2 *listener, const char *name, bool bServerSide ) = 0;
 
 	// returns true if this listener is listens to given event
 	virtual bool FindListener( IGameEventListener2 *listener, const char *name ) = 0;

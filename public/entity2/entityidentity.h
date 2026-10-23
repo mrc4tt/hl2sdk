@@ -9,37 +9,16 @@
 #define MAX_ENTITY_LISTS 64 // 0x3F
 #define MAX_TOTAL_ENTITIES MAX_ENTITIES_IN_LIST * MAX_ENTITY_LISTS // 0x8000
 
-#include "tier1/utlstring.h"
-#include "tier1/utlsymbollarge.h"
+#include "tier0/utlstring.h"
+#include "tier0/utlsymbollarge.h"
 #include "entity2/entitycomponent.h"
 #include "entityhandle.h"
-#include "edict.h"
+#include "networksystem/networksystemtypes.h"
+#include "worldrenderer/world_defs.h"
 
+class CEntityAttributeTable;
 class CEntityClass;
 class CEntityInstance;
-
-typedef uint32 SpawnGroupHandle_t;
-typedef CUtlStringToken WorldGroupId_t;
-
-class CEntityIndex
-{
-public:
-	CEntityIndex( int index )
-	{
-		_index = index;
-	}
-
-	int Get() const
-	{
-		return _index;
-	}
-
-	bool operator==( const CEntityIndex &other ) const { return other._index == _index; }
-	bool operator!=( const CEntityIndex &other ) const { return other._index != _index; }
-	
-private:
-	int _index;
-};
 
 enum EntityFlags_t : uint32
 {
@@ -108,7 +87,7 @@ public:
 	uint32 m_fDataObjectTypes;
 	ChangeAccessorFieldPathIndex_t m_PathIndex;
 private:
-	void* m_pAttributes; // CUtlObjectAttributeTable<CEntityIdentity, CUtlStringToken>
+	CEntityAttributeTable* m_pAttributes;
 public:
 	CEntityIdentity* m_pPrev;
 	CEntityIdentity* m_pNext;

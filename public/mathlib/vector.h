@@ -22,10 +22,8 @@
 // For rand(). We really need a library!
 #include <stdlib.h>
 
-#ifndef _X360
 // For MMX intrinsics
 #include <xmmintrin.h>
-#endif
 
 #ifndef ALIGN16_POST
 #define ALIGN16_POST
@@ -149,9 +147,9 @@ public:
 	inline bool IsZeroFast( ) const RESTRICT
 	{
 		COMPILE_TIME_ASSERT( sizeof(vec_t) == sizeof(int) );
-		return ( *reinterpret_cast<const int *>(&x) == 0 && 
-				 *reinterpret_cast<const int *>(&y) == 0 && 
-				 *reinterpret_cast<const int *>(&z) == 0 );
+		return ( FloatBits( x ) == 0 && 
+				 FloatBits( y ) == 0 && 
+				 FloatBits( z ) == 0 );
 	}
 
 	vec_t	NormalizeInPlace();
@@ -191,7 +189,7 @@ public:
 	vec_t	Dot(const Vector& vOther) const;			
 
 	// assignment
-	Vector& operator=(const Vector &vOther);
+	Vector& operator=(const Vector &vOther) = default;
 
 	// returns 0, 1, 2 corresponding to the component with the largest absolute value
 	inline int LargestComponent() const;
@@ -236,15 +234,6 @@ private:
 };
 
 
-
-#ifdef _X360
-#define USE_M64S 1
-#else
-#define USE_M64S 0
-#endif
-
-
-
 //=========================================================
 // 4D Short Vector (aligned on 8-byte boundary)
 //=========================================================
@@ -256,12 +245,6 @@ public:
 
 	// Initialization
 	void Init(short ix = 0, short iy = 0, short iz = 0, short iw = 0 );
-
-
-#if USE_M64S
-	__m64 &AsM64() { return *(__m64*)&x; }
-	const __m64 &AsM64() const { return *(const __m64*)&x; } 
-#endif
 
 	// Setter
 	void Set( const ShortVector& vOther );
@@ -314,11 +297,6 @@ public:
 
 	// Initialization
 	void Init(int ix = 0, int iy = 0, int iz = 0, int iw = 0 );
-
-#if USE_M64S
-	__m64 &AsM64() { return *(__m64*)&x; }
-	const __m64 &AsM64() const { return *(const __m64*)&x; } 
-#endif
 
 	// Setter
 	void Set( const IntVector4D& vOther );
@@ -398,118 +376,6 @@ public:
 
 
 //-----------------------------------------------------------------------------
-// Here's where we add all those lovely SSE optimized routines
-//-----------------------------------------------------------------------------
-
-class ALIGN16 VectorAligned : public Vector
-{
-public:
-	inline VectorAligned(void) {};
-	inline VectorAligned(vec_t X, vec_t Y, vec_t Z) 
-	{
-		Init(X,Y,Z);
-	}
-
-#ifdef VECTOR_NO_SLOW_OPERATIONS
-
-private:
-	// No copy constructors allowed if we're in optimal mode
-	VectorAligned(const VectorAligned& vOther);
-	VectorAligned(const Vector &vOther);
-
-#else
-public:
-	explicit VectorAligned(const Vector &vOther) 
-	{
-		Init(vOther.x, vOther.y, vOther.z);
-	}
-	
-	VectorAligned& operator=(const Vector &vOther)	
-	{
-		Init(vOther.x, vOther.y, vOther.z);
-		return *this;
-	}
-
-	VectorAligned& operator=(const VectorAligned &vOther)
-	{
-		// we know we're aligned, so use simd
-		// we can't use the convenient abstract interface coz it gets declared later
-#ifdef _X360
-		XMStoreVector4A(Base(), XMLoadVector4A(vOther.Base()));
-#elif _WIN32
-		_mm_store_ps(Base(), _mm_load_ps( vOther.Base() ));
-#else
-		Init(vOther.x, vOther.y, vOther.z);
-#endif
-		return *this;
-	}
-
-	
-#endif
-	float w;	// this space is used anyway
-
-#if !defined(NO_MALLOC_OVERRIDE)
-	void* operator new[] ( size_t nSize)
-	{
-		return MemAlloc_AllocAligned(nSize, 16);
-	}
-
-	void* operator new[] ( size_t nSize, const char *pFileName, int nLine)
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-
-	void* operator new[] ( size_t nSize, int /*nBlockUse*/, const char *pFileName, int nLine)
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-
-	void operator delete[] ( void* p) 
-	{
-		MemAlloc_FreeAligned(p);
-	}
-
-	void operator delete[] ( void* p, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-
-	void operator delete[] ( void* p, int /*nBlockUse*/, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-
-	// please don't allocate a single quaternion...
-	void* operator new   ( size_t nSize )
-	{
-		return MemAlloc_AllocAligned(nSize, 16);
-	}
-	void* operator new   ( size_t nSize, const char *pFileName, int nLine )
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-	void* operator new   ( size_t nSize, int /*nBlockUse*/, const char *pFileName, int nLine )
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-	void operator delete ( void* p) 
-	{
-		MemAlloc_FreeAligned(p);
-	}
-
-	void operator delete ( void* p, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-
-	void operator delete ( void* p, int /*nBlockUse*/, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-#endif
-} ALIGN16_POST;
-
-//-----------------------------------------------------------------------------
 // Vector related operations
 //-----------------------------------------------------------------------------
 
@@ -527,7 +393,7 @@ FORCEINLINE void VectorMultiply( const Vector& a, const Vector& b, Vector& resul
 FORCEINLINE void VectorDivide( const Vector& a, vec_t b, Vector& result );
 FORCEINLINE void VectorDivide( const Vector& a, const Vector& b, Vector& result );
 inline void VectorScale ( const Vector& in, vec_t scale, Vector& result );
-inline void VectorMA( const Vector& start, float scale, const Vector& direction, Vector& dest );
+void VectorMA( const Vector& start, float scale, const Vector& direction, Vector& dest );
 
 // Vector equality with tolerance
 bool VectorsAreEqual( const Vector& src1, const Vector& src2, float tolerance = 0.0f );
@@ -671,7 +537,6 @@ inline void Vector::Random( vec_t minVal, vec_t maxVal )
 	CHECK_VALID(*this);
 }
 
-// This should really be a single opcode on the PowerPC (move r0 onto the vec reg)
 inline void Vector::Zero()
 {
 	x = y = z = 0.0f;
@@ -681,18 +546,6 @@ inline void VectorClear( Vector& a )
 {
 	a.x = a.y = a.z = 0.0f;
 }
-
-//-----------------------------------------------------------------------------
-// assignment
-//-----------------------------------------------------------------------------
-
-inline Vector& Vector::operator=(const Vector &vOther)	
-{
-	CHECK_VALID(vOther);
-	x=vOther.x; y=vOther.y; z=vOther.z; 
-	return *this; 
-}
-
 
 //-----------------------------------------------------------------------------
 // Array access
@@ -1769,119 +1622,6 @@ inline bool QuaternionsAreEqual( const Quaternion& src1, const Quaternion& src2,
 
 
 //-----------------------------------------------------------------------------
-// Here's where we add all those lovely SSE optimized routines
-//-----------------------------------------------------------------------------
-class ALIGN16 QuaternionAligned : public Quaternion
-{
-public:
-	inline QuaternionAligned(void) {};
-	inline QuaternionAligned(vec_t X, vec_t Y, vec_t Z, vec_t W) 
-	{
-		Init(X,Y,Z,W);
-	}
-
-	operator Quaternion * () { return this; } 
-	operator const Quaternion * () { return this; } 
-
-#ifdef VECTOR_NO_SLOW_OPERATIONS
-
-private:
-	// No copy constructors allowed if we're in optimal mode
-	QuaternionAligned(const QuaternionAligned& vOther);
-	QuaternionAligned(const Quaternion &vOther);
-
-#else
-public:
-	explicit QuaternionAligned(const Quaternion &vOther) 
-	{
-		Init(vOther.x, vOther.y, vOther.z, vOther.w);
-	}
-
-	QuaternionAligned& operator=(const Quaternion &vOther)	
-	{
-		Init(vOther.x, vOther.y, vOther.z, vOther.w);
-		return *this;
-	}
-
-	QuaternionAligned& operator=(const QuaternionAligned &vOther)
-	{
-		// we know we're aligned, so use simd
-		// we can't use the convenient abstract interface coz it gets declared later
-#ifdef _X360
-		XMStoreVector4A(Base(), XMLoadVector4A(vOther.Base()));
-#elif _WIN32
-		_mm_store_ps(Base(), _mm_load_ps( vOther.Base() ));
-#else
-		Init(vOther.x, vOther.y, vOther.z, vOther.w);
-#endif
-		return *this;
-	}
-
-#endif
-
-#if !defined(NO_MALLOC_OVERRIDE)
-	void* operator new[] ( size_t nSize)
-	{
-		return MemAlloc_AllocAligned(nSize, 16);
-	}
-
-	void* operator new[] ( size_t nSize, const char *pFileName, int nLine)
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-
-	void* operator new[] ( size_t nSize, int /*nBlockUse*/, const char *pFileName, int nLine)
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-
-	void operator delete[] ( void* p) 
-	{
-		MemAlloc_FreeAligned(p);
-	}
-
-	void operator delete[] ( void* p, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-
-	void operator delete[] ( void* p, int /*nBlockUse*/, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-
-	// please don't allocate a single quaternion...
-	void* operator new   ( size_t nSize )
-	{
-		return MemAlloc_AllocAligned(nSize, 16);
-	}
-	void* operator new   ( size_t nSize, const char *pFileName, int nLine )
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-	void* operator new   ( size_t nSize, int /*nBlockUse*/, const char *pFileName, int nLine )
-	{
-		return MemAlloc_AllocAlignedFileLine(nSize, 16, pFileName, nLine);
-	}
-	void operator delete ( void* p) 
-	{
-		MemAlloc_FreeAligned(p);
-	}
-
-	void operator delete ( void* p, const char *pFileName, int nLine)  
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-
-	void operator delete (void *p, int /*nBlockUse*/, const char *pFileName, int nLine)
-	{
-		MemAlloc_FreeAligned(p, pFileName, nLine);
-	}
-#endif
-} ALIGN16_POST;
-
-
-//-----------------------------------------------------------------------------
 // Radian Euler angle aligned to axis (NOT ROLL/PITCH/YAW)
 //-----------------------------------------------------------------------------
 class QAngle;
@@ -2040,7 +1780,7 @@ public:
 	//void	Negate(); 
 
 	// No assignment operators either...
-	QAngle& operator=( const QAngle& src );
+	QAngle& operator=( const QAngle& src ) = default;
 
 #ifndef VECTOR_NO_SLOW_OPERATIONS
 	// copy constructors
@@ -2160,17 +1900,6 @@ inline QAngle RadianEuler::ToQAngle( void) const
 		y * 180.f / 3.14159265358979323846f,
 		z * 180.f / 3.14159265358979323846f,
 		x * 180.f / 3.14159265358979323846f );
-}
-
-
-//-----------------------------------------------------------------------------
-// assignment
-//-----------------------------------------------------------------------------
-inline QAngle& QAngle::operator=(const QAngle &vOther)	
-{
-	CHECK_VALID(vOther);
-	x=vOther.x; y=vOther.y; z=vOther.z; 
-	return *this; 
 }
 
 
@@ -2398,33 +2127,15 @@ inline void AngularImpulseToQAngle( const AngularImpulse &impulse, QAngle &angle
 	angles.z = impulse.x;
 }
 
-#if !defined( _X360 )
-
 FORCEINLINE vec_t InvRSquared( const float* v )
 {
-	return 1.0 / MAX( 1.0, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
+	return 1.0f / MAX( 1.0f, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
 }
 
 FORCEINLINE vec_t InvRSquared( const Vector &v )
 {
 	return InvRSquared( v.Base() );
 }
-
-#else
-
-// call directly
-FORCEINLINE float _VMX_InvRSquared( const Vector &v )
-{
-	XMVECTOR xmV = XMVector3ReciprocalLength( XMLoadVector3( v.Base() ) );
-	xmV = XMVector3Dot( xmV, xmV );
-	return xmV.x;
-}
-
-#define InvRSquared(x) _VMX_InvRSquared(x)
-
-#endif // _X360
-
-#if !defined( _X360 )
 
 // FIXME: Change this back to a #define once we get rid of the vec_t version
 float VectorNormalize( Vector& v );
@@ -2435,32 +2146,6 @@ FORCEINLINE float VectorNormalize( float * v )
 	return VectorNormalize(*(reinterpret_cast<Vector *>(v)));
 }
 
-#else
-
-// call directly
-FORCEINLINE float _VMX_VectorNormalize( Vector &vec )
-{
-	float mag = XMVector3Length( XMLoadVector3( vec.Base() ) ).x;
-	float den = 1.f / (mag + FLT_EPSILON );
-	vec.x *= den;
-	vec.y *= den;
-	vec.z *= den;
-	return mag;
-}
-// FIXME: Change this back to a #define once we get rid of the vec_t version
-FORCEINLINE float VectorNormalize( Vector& v )
-{
-	return _VMX_VectorNormalize( v );
-}
-// FIXME: Obsolete version of VectorNormalize, once we remove all the friggin float*s
-FORCEINLINE float VectorNormalize( float *pV )
-{
-	return _VMX_VectorNormalize(*(reinterpret_cast<Vector*>(pV)));
-}
-
-#endif // _X360
-
-#if !defined( _X360 )
 FORCEINLINE void VectorNormalizeFast (Vector& vec)
 {
 	float ool = FastRSqrt( FLT_EPSILON + vec.x * vec.x + vec.y * vec.y + vec.z * vec.z );
@@ -2469,19 +2154,6 @@ FORCEINLINE void VectorNormalizeFast (Vector& vec)
 	vec.y *= ool;
 	vec.z *= ool;
 }
-#else
-
-// call directly
-FORCEINLINE void VectorNormalizeFast( Vector &vec )
-{
-	XMVECTOR xmV = XMVector3LengthEst( XMLoadVector3( vec.Base() ) );
-	float den = 1.f / (xmV.x + FLT_EPSILON);
-	vec.x *= den;
-	vec.y *= den;
-	vec.z *= den;
-}
-
-#endif // _X360
 
 inline vec_t Vector::NormalizeInPlace()
 {
