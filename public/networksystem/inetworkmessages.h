@@ -18,6 +18,7 @@
 #include <tier0/utlstringtoken.h>
 #include <tier0/logging.h>
 #include "color.h"
+#include "const.h"
 
 class CSchemaClassBindingBase;
 class INetworkSerializerBindingBuildFilter;
@@ -203,6 +204,12 @@ struct CoordSizeParams_t
 	// decode with
 	uint8 m_CoordMPNumBits[8];
 	float m_CoordMPMultipliers[4];
+};
+
+class CSendProxyRecipients
+{
+public:
+	CPlayerBitVec m_Bits;
 };
 
 #define NETWORKMESSAGES_INTERFACE_VERSION "NetworkMessagesVersion001"
