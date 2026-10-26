@@ -118,7 +118,7 @@ jobs:
           if [ -z "$binDir" ]; then
             sudo=$(command -v sudo || true)
             $sudo apt-get update -qq
-            $sudo apt-get install -y -qq clang-20 lld-20 llvm-20 ninja-build
+            $sudo apt-get install -y -qq clang-20 clang-tools-20 lld-20 llvm-20 ninja-build
             binDir=$(find_bin)
           fi
           "$binDir/clang-cl" --version | head -1

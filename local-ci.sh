@@ -9,7 +9,8 @@
 #   ./local-ci.sh linux -- -v     anything after -- goes to act
 #
 # Needs act (https://github.com/nektos/act, or 'gh extension install nektos/gh-act') and
-# docker. The windows job uses the host's xwin splat (XWIN_ROOT, default ~/.xwin) when
+# docker. The jobs run in a slim runner image built from .github/local/runner.Dockerfile
+# on first use (~3 GB; RUNNER_IMAGE=... overrides it). The windows job uses the host's xwin splat (XWIN_ROOT, default ~/.xwin) when
 # there is one and splats a fresh one (~630MB) otherwise. act copies the working tree,
 # so uncommitted changes are built too.
 
@@ -25,7 +26,9 @@ if [ -n "$(git rev-parse --show-superproject-working-tree 2>/dev/null)" ]; then
 	exit 1
 fi
 
-RUNNER_IMAGE=catthehacker/ubuntu:full-latest
+RUNNER_DOCKERFILE=.github/local/runner.Dockerfile
+# Tagged with the Dockerfile's hash, so editing it builds a fresh image
+RUNNER_IMAGE=${RUNNER_IMAGE:-hl2sdk-local-ci:$(sha256sum "$RUNNER_DOCKERFILE" | cut -c1-12)}
 BUILD_IMAGE=ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
 
 job_args=()
@@ -51,10 +54,16 @@ else
 fi
 docker info &> /dev/null || { echo "Docker is not running" >&2; exit 1; }
 
-# act runs with --pull=false, so fetch the images it would otherwise not find
-for image in "$RUNNER_IMAGE" "$BUILD_IMAGE"; do
-	docker image inspect "$image" &> /dev/null || docker pull "$image"
-done
+# act runs with --pull=false, so fetch or build the images it would otherwise not find
+if ! docker image inspect "$RUNNER_IMAGE" &> /dev/null; then
+	if [[ "$RUNNER_IMAGE" == hl2sdk-local-ci:* ]]; then
+		echo "Building the runner image $RUNNER_IMAGE (once)..."
+		docker build -t "$RUNNER_IMAGE" -f "$RUNNER_DOCKERFILE" .github/local
+	else
+		docker pull "$RUNNER_IMAGE"
+	fi
+fi
+docker image inspect "$BUILD_IMAGE" &> /dev/null || docker pull "$BUILD_IMAGE"
 
 # --user root: the runner image's default user (runner, 1001) can't write to a
 # workspace copied from a home directory
