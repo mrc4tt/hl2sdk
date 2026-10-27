@@ -72,8 +72,8 @@ const KV3ID_t g_KV3Format_Generic = { "generic", 0x469806E97412167Cull, 0xE73790
 
 enum KV1TextEscapeBehavior_t
 {
-	KV1TEXT_ESC_BEHAVIOR_UNK1 = 0,
-	KV1TEXT_ESC_BEHAVIOR_UNK2 = 1,
+	KV1_NO_ESCAPE_SEQUENCES = 0,
+	KV1_HAS_ESCAPE_SEQUENCES = 1,
 };
 
 // Only LoadKV3FromOldSchemaText reads these, which LoadKV3 calls for old schema text
@@ -101,8 +101,8 @@ PLATFORM_OVERLOAD bool LoadKV3FromFile( KeyValues3* kv, CUtlString* error, const
 PLATFORM_OVERLOAD bool LoadKV3FromJSON( KeyValues3* kv, CUtlString* error, const char* input, const char* kv_name, uint loadFlags = KV3_LOAD_TEXT_NONE );
 PLATFORM_OVERLOAD bool LoadKV3FromJSONFile( KeyValues3* kv, CUtlString* error, const char* path, const char* filename, uint loadFlags = KV3_LOAD_TEXT_NONE );
 PLATFORM_OVERLOAD bool LoadKV3FromKV1File( KeyValues3* kv, CUtlString* error, const char* path, const char* filename, KV1TextEscapeBehavior_t esc_behavior, uint loadFlags = KV3_LOAD_TEXT_NONE );
-PLATFORM_OVERLOAD bool LoadKV3FromKV1Text( KeyValues3* kv, CUtlString* error, const char* input, KV1TextEscapeBehavior_t esc_behavior, const char* kv_name, bool unk, uint loadFlags = KV3_LOAD_TEXT_NONE );
-PLATFORM_OVERLOAD bool LoadKV3FromKV1Text_Translated( KeyValues3* kv, CUtlString* error, const char* input, KV1TextEscapeBehavior_t esc_behavior, const KV1ToKV3Translation_t* translation, int unk1, const char* kv_name, bool unk2, uint loadFlags = KV3_LOAD_TEXT_NONE );
+PLATFORM_OVERLOAD bool LoadKV3FromKV1Text( KeyValues3* kv, CUtlString* error, const char* input, KV1TextEscapeBehavior_t esc_behavior, const char* kv_name, bool bIgnoreConditionals, uint loadFlags = KV3_LOAD_TEXT_NONE );
+PLATFORM_OVERLOAD bool LoadKV3FromKV1Text_Translated( KeyValues3* kv, CUtlString* error, const char* input, KV1TextEscapeBehavior_t esc_behavior, const KV1ToKV3Translation_t* translation, int nTranslations, const char* kv_name, bool bIgnoreConditionals, uint loadFlags = KV3_LOAD_TEXT_NONE );
 PLATFORM_OVERLOAD bool LoadKV3FromKV3OrKV1( KeyValues3* kv, CUtlString* error, CUtlBuffer* input, const KV3ID_t& format, const char* kv_name, uint loadFlags = KV3_LOAD_TEXT_NONE );
 PLATFORM_OVERLOAD bool LoadKV3FromOldSchemaText( KeyValues3* kv, CUtlString* error, CUtlBuffer* input, const KV3ID_t& format, const char* kv_name, uint loadFlags = KV3_LOAD_TEXT_NONE );
 PLATFORM_OVERLOAD bool LoadKV3Text_NoHeader( KeyValues3* kv, CUtlString* error, const char* input, const KV3ID_t& format, const char* kv_name, uint loadFlags = KV3_LOAD_TEXT_NONE );
@@ -111,7 +111,7 @@ PLATFORM_OVERLOAD bool SaveKV3( const KV3ID_t& encoding, const KV3ID_t& format, 
 PLATFORM_OVERLOAD bool SaveKV3AsJSON( const KeyValues3* kv, CUtlString* error, CUtlBuffer* output );
 PLATFORM_OVERLOAD bool SaveKV3AsJSON( const KeyValues3* kv, CUtlString* error, CUtlString* output );
 PLATFORM_OVERLOAD bool SaveKV3AsKV1Text( const KeyValues3* kv, CUtlString* error, CUtlBuffer* output, KV1TextEscapeBehavior_t esc_behavior );
-PLATFORM_OVERLOAD bool SaveKV3AsKV1Text_Translated( const KeyValues3* kv, CUtlString* error, CUtlBuffer* output, KV1TextEscapeBehavior_t esc_behavior, const KV3ToKV1Translation_t* translation, int unk );
+PLATFORM_OVERLOAD bool SaveKV3AsKV1Text_Translated( const KeyValues3* kv, CUtlString* error, CUtlBuffer* output, KV1TextEscapeBehavior_t esc_behavior, const KV3ToKV1Translation_t* translation, int nTranslations );
 PLATFORM_OVERLOAD bool SaveKV3Text_NoHeader( const KeyValues3* kv, CUtlString* error, CBufferString* output, uint flags = KV3_SAVE_TEXT_NONE );
 PLATFORM_OVERLOAD bool SaveKV3Text_NoHeader( const KeyValues3* kv, CUtlString* error, CUtlBuffer* output, uint flags = KV3_SAVE_TEXT_NONE );
 PLATFORM_OVERLOAD bool SaveKV3Text_NoHeader( const KeyValues3* kv, CUtlString* error, CUtlString* output, uint flags = KV3_SAVE_TEXT_NONE );
@@ -834,9 +834,6 @@ private:
 	uint8 m_nInitialSize;
 	bool m_bIsDynamicallySized;
 
-	bool m_unk001;
-	bool m_unk002;
-
 	union
 	{
 		Element_t m_StaticElements[DATA_SIZE];
@@ -966,6 +963,7 @@ private:
 	bool m_bIsDynamicallySized;
 
 	bool m_bHasInvalidMemberNames;
+	// AMNOTE: Zeroed when the table is set up, nothing reads it
 	bool m_unk001;
 
 	union
@@ -1249,17 +1247,17 @@ COMPILE_TIME_ASSERT(sizeof(CKV3Arena) == KV3_CONTEXT_SIZE);
 
 template < typename T > inline T KeyValues3::FromString( T defaultValue ) const { Assert( 0 ); return defaultValue; }
 template <> inline bool KeyValues3::FromString( bool defaultValue ) const		{ return V_StringToBool( GetString(), defaultValue ); }
-template <> inline char8 KeyValues3::FromString( char8 defaultValue ) const		{ return V_StringToInt8( GetString(), defaultValue ); }
-template <> inline int8 KeyValues3::FromString( int8 defaultValue ) const		{ return V_StringToInt8( GetString(), defaultValue ); }
-template <> inline uint8 KeyValues3::FromString( uint8 defaultValue ) const		{ return V_StringToUint8( GetString(), defaultValue ); }
-template <> inline int16 KeyValues3::FromString( int16 defaultValue ) const		{ return V_StringToInt16( GetString(), defaultValue ); }
-template <> inline uint16 KeyValues3::FromString( uint16 defaultValue ) const	{ return V_StringToUint16( GetString(), defaultValue ); }
-template <> inline int32 KeyValues3::FromString( int32 defaultValue ) const		{ return V_StringToInt32( GetString(), defaultValue ); }
-template <> inline uint32 KeyValues3::FromString( uint32 defaultValue ) const	{ return V_StringToUint32( GetString(), defaultValue ); }
-template <> inline int64 KeyValues3::FromString( int64 defaultValue ) const		{ return V_StringToInt64( GetString(), defaultValue ); }
-template <> inline uint64 KeyValues3::FromString( uint64 defaultValue ) const	{ return V_StringToUint64( GetString(), defaultValue ); }
-template <> inline float32 KeyValues3::FromString( float32 defaultValue ) const	{ return V_StringToFloat32( GetString(), defaultValue ); }
-template <> inline float64 KeyValues3::FromString( float64 defaultValue ) const	{ return V_StringToFloat64( GetString(), defaultValue ); }
+template <> inline char8 KeyValues3::FromString( char8 defaultValue ) const		{ return V_StringToInt8( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline int8 KeyValues3::FromString( int8 defaultValue ) const		{ return V_StringToInt8( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline uint8 KeyValues3::FromString( uint8 defaultValue ) const		{ return V_StringToUint8( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline int16 KeyValues3::FromString( int16 defaultValue ) const		{ return V_StringToInt16( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline uint16 KeyValues3::FromString( uint16 defaultValue ) const	{ return V_StringToUint16( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline int32 KeyValues3::FromString( int32 defaultValue ) const		{ return V_StringToInt32( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline uint32 KeyValues3::FromString( uint32 defaultValue ) const	{ return V_StringToUint32( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline int64 KeyValues3::FromString( int64 defaultValue ) const		{ return V_StringToInt64( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline uint64 KeyValues3::FromString( uint64 defaultValue ) const	{ return V_StringToUint64( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline float32 KeyValues3::FromString( float32 defaultValue ) const	{ return V_StringToFloat32( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
+template <> inline float64 KeyValues3::FromString( float64 defaultValue ) const	{ return V_StringToFloat64( GetString(), defaultValue, NULL, NULL, PARSING_FLAG_USE_PARTIAL_RESULT ); }
 
 template < typename T > inline void KeyValues3::SetDirect( T value ) { Assert( 0 ); }
 template <> inline void KeyValues3::SetDirect( bool value )		{ m_Data.m_Bool = value; }
@@ -1648,7 +1646,7 @@ inline void CKV3ArenaBase::ClusterNodeChain<CLUSTER>::RemoveFromChain( CLUSTER *
 template<typename NODE>
 inline void CKV3ArenaBase::NodeList<NODE>::EnsureByteSize( int bytes_needed )
 {
-	if(bytes_needed < m_nAllocatedBytes)
+	if(bytes_needed <= m_nAllocatedBytes)
 		return;
 
 	int new_alloc_size = CalcNewDoublingCount<int>( m_nAllocatedBytes, bytes_needed, ALLOC_CONTEXT_NODELIST_MIN, ALLOC_CONTEXT_NODELIST_MAX );
