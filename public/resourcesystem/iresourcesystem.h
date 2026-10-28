@@ -15,13 +15,13 @@
 #include <memory>
 
 class CBufferString;
+class IAsyncResourceDataRequest;
 class ICodeResourceManifestManager;
 class IFileSystem;
 class IRD_RegisterResourceDataUtils;
 class IResourceDeallocatorUtils;
 class IResourceSystemLeakTracker;
 class IResourceSystemProfiler;
-class IResourceSystemUtils;
 class IResourceUpdater;
 class IToolsResourceListener;
 class IToolsResourcePreReloadListener;
@@ -71,6 +71,22 @@ public:
 	virtual ~IAsyncProcessedDataResult() {}
 };
 
+abstract_class IResourceSystemUtils
+{
+public:
+	virtual void MarkLoadingWorkPending( ResourceHandle_t hResource, bool bHasWork ) = 0;
+
+	// nQueuePosition 1 queues the read ahead of the others
+	virtual std::shared_ptr<IAsyncResourceDataRequest> CreateAsyncResourceDataRequest( ResourceHandle_t hResource, int64 nFileOffset, size_t nLoadSizeBytes, int nQueuePosition, const char *pFileNameOverride ) = 0;
+	virtual void SubmitAsyncResourceDataRequest( IAsyncResourceDataRequest *pRequest ) = 0;
+
+	virtual bool IsBlockingOnManifestLoad() = 0;
+
+	// Replaces the resource's references with every resource reachable from them, following the references of
+	// resources whose type is in pTypes
+	virtual void FlattenResourceReferences( ResourceHandle_t hResource, int nTypeCount, const ResourceType_t *pTypes ) = 0;
+};
+
 abstract_class IResourceTypeManager
 {
 public:
@@ -80,14 +96,15 @@ public:
 	virtual void unk001() = 0;
 	virtual ResourceHandle_t GetErrorResource() = 0;
 	virtual bool NeedsFrameUpdate() const = 0;
-	virtual void FrameUpdate( int ) = 0;
+	virtual void FrameUpdate( int nFinishedFrameCount ) = 0;
 	virtual bool RequiresFinalizeResourceCall() const = 0;
 	virtual void FinalizeResource( ResourceHandle_t hResource, ResourceLoadType_t eLoadType ) = 0;
-	// AMNOTE: Cached when the type manager is installed, true makes the resource system call unk102 on a worker thread before FinalizeResource
-	virtual bool unk101() const = 0;
-	virtual void unk102( ResourceHandle_t hResource, ResourceLoadType_t eLoadType ) = 0;
+	// Cached when the type manager is installed; true makes the resource system call AsyncPreFinalizeResource from a job on a
+	// worker thread before FinalizeResource
+	virtual bool WantsAsyncPreFinalize() const = 0;
+	virtual void AsyncPreFinalizeResource( ResourceHandle_t hResource, ResourceLoadType_t eLoadType ) = 0;
 	virtual ResourceStreamingType_t GetStreamingType() const = 0;
-	virtual int GetNonStreamingDataLoadSize( ResourceHandle_t hResource, bool ) const = 0;
+	virtual int GetNonStreamingDataLoadSize( ResourceHandle_t hResource, bool bIsReloading ) const = 0;
 	virtual void LoadStreamingData( ResourceHandle_t hResource, IResourceSystemUtils *pUtils ) = 0;
 	virtual void AllocateResource( ResourceHandle_t hResource, ResourceId_t id, const ResourceFileHeader_t *pHeader, IRD_RegisterResourceDataUtils *pUtils ) = 0;
 	virtual void DeallocateResource( void *pData, IResourceDeallocatorUtils *pUtils ) = 0;
@@ -96,12 +113,14 @@ public:
 	virtual bool IsStreamingDataAlreadyLoaded( ResourceHandle_t hResource ) = 0;
 	virtual bool WantsAsyncProcessData() const = 0;
 	virtual std::unique_ptr<IAsyncProcessedDataResult> AsyncProcessData( ResourceHandle_t hResource, const ResourceFileHeader_t *pHeader ) = 0;
-	// AMNOTE: Cached when the type manager is installed, true makes the resource system call unk202 during Update, only for the vdata type
-	virtual bool unk201() const = 0;
-	virtual void unk202() = 0;
-	// AMNOTE: Called on every type manager before and after Update processes the resources that finished loading
-	virtual void unk203() = 0;
-	virtual void unk204() = 0;
+	// Cached when the type manager is installed; true makes the resource system call PostFinalizeResources at the end of
+	// each update, only for the vdata type. The vdata type manager calls its listeners there for the vdata finalized
+	// since the last call
+	virtual bool WantsPostFinalize() const = 0;
+	virtual void PostFinalizeResources() = 0;
+	// Called on every type manager before and after each pass that deallocates the resources nothing references anymore
+	virtual void BeginDeallocateResources() = 0;
+	virtual void EndDeallocateResources() = 0;
 };
 
 enum ResourceManifestPriority_t
