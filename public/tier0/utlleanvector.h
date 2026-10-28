@@ -352,7 +352,12 @@ protected:
 	} ALIGN8_POST;
 
 	// AMNOTE: Ensures all the added padding is also utilized for static storage if possible
+	// Clang targeting MSVC rejects the CRT's reinterpret_cast offsetof in a constant expression
+#if defined( __clang__ )
+	static constexpr size_t FIXED_CAPACITY = ( sizeof( FixedLayout_t ) - __builtin_offsetof( FixedLayout_t, m_Elements ) ) / sizeof( T );
+#else
 	static constexpr size_t FIXED_CAPACITY = ( sizeof( FixedLayout_t ) - offsetof( FixedLayout_t, m_Elements ) ) / sizeof( T );
+#endif
 
 	union
 	{
