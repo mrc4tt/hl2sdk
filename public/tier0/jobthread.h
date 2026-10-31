@@ -19,6 +19,7 @@
 #include "tier0/smartptr.h"
 #include "tier0/tier0_strtools.h"
 #include "tier0/utlvector.h"
+#include "tier0/utlstringtoken.h"
 
 #ifdef AddJob  // windows.h print function collisions
 #undef AddJob
@@ -59,9 +60,24 @@ enum JobPriority_t
 	JP_NUM_PRIORITIES
 };
 
+// How a thread pool counts its threads when ThreadPoolStartParams_t::nThreads is negative, within nMaxThreads.
+enum ThreadPoolCoreTypeRequest_t
+{
+	TP_CORE_TYPE_PERFORMANCE,				// "performance": the P-cores minus one
+	TP_CORE_TYPE_EFFICIENCY,				// "efficiency": the E-cores
+	TP_CORE_TYPE_SPLIT,						// "split": the P-cores minus one, then the E-cores
+	TP_CORE_TYPE_UNDIFFERENTIATED,			// "undifferentiated": the physical cores minus one
+	TP_CORE_TYPE_AUTO_THREADS,				// "auto_threads": tier0's own count minus one, can be 0
+	TP_CORE_TYPE_AUTO_THREADS_AT_LEAST_ONE,
+	TP_CORE_TYPE_MAX_THREADS,				// "max_threads": the logical processors minus one, can be 0
+	TP_CORE_TYPE_MAX_THREADS_AT_LEAST_ONE,
+
+	TP_CORE_TYPE_DEFAULT = TP_CORE_TYPE_SPLIT
+};
+
 struct ThreadPoolStartParams_t
 {
-	int		nCoreTypeRequest;	// AMNOTE: 0 performance, 1 efficiency, 2 split, 3 undifferentiated, 4 auto_threads, 6 max_threads
+	ThreadPoolCoreTypeRequest_t nCoreTypeRequest;
 	int		nThreads;			// AMNOTE: negative to count the cores nCoreTypeRequest picks
 	int		nMaxThreads;
 	int		iThreadPriority;
@@ -93,7 +109,8 @@ public:
 	//-----------------------------------------------------
 	virtual bool Start( const ThreadPoolStartParams_t &startParams, const char *pszNameOverride = NULL ) = 0;
 	virtual bool Stop() = 0;
-	virtual void unk001( const ThreadPoolStartParams_t &startParams ) = 0;
+	// Stops the threads and starts them again with startParams, under the name Start was given
+	virtual void Restart( const ThreadPoolStartParams_t &startParams ) = 0;
 
 	//-----------------------------------------------------
 	// Functions for any thread
@@ -102,7 +119,10 @@ public:
 	virtual int NumThreads() = 0;
 	virtual int NumIdleThreads() = 0;
 	virtual int GetCurrentThreadIndex() = 0;
-	virtual int unk101( int, int ) = 0;
+	// The current thread's slot for per-thread data: GetCurrentThreadIndex() + 1 on the pool's threads,
+	// 0 on the main thread, else nOtherThreadSlot.
+	// AMNOTE: bUnk is unused
+	virtual int GetCurrentThreadSlot( bool bUnk, int nOtherThreadSlot ) = 0;
 
 	//-----------------------------------------------------
 	// Pause/resume processing jobs
@@ -350,8 +370,8 @@ public:
 	DLL_CLASS_IMPORT void ReleaseUpstreamDependency();
 	DLL_CLASS_IMPORT void Wait();
 
-	// AMNOTE: Looks like a job type check
-	virtual bool unk001( uint32 ) { return false; }
+	// Whether the job is of the class with this name token (CUtlStringToken of the class name)
+	virtual bool IsJobClass( CUtlStringToken classNameToken ) { return false; }
 
 protected:
 	CUtlVectorFixedGrowable<CThreadedJobWithDependencies *, 4> m_UpstreamJobs;

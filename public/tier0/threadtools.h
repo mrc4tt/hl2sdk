@@ -78,7 +78,13 @@ const unsigned TT_INFINITE = 0xffffffff;
 FORWARD_DECLARE_HANDLE( ThreadHandle_t );
 typedef uintp (*ThreadFunc_t)( void *pParam );
 
-PLATFORM_INTERFACE ThreadHandle_t CreateSimpleThread( ThreadFunc_t, void *pParam, unsigned stackSize = 0 );
+// nDuplicateParamSize, if set, copies that many bytes of pParam and passes the copy to pfnThread instead
+PLATFORM_INTERFACE ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, ThreadId_t *pID, unsigned stackSize, bool bCreateSuspended, const char *szName, size_t nDuplicateParamSize );
+inline ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigned stackSize = 0, const char *szName = NULL, size_t nDuplicateParamSize = 0 )
+{
+	return CreateSimpleThread( pfnThread, pParam, NULL, stackSize, false, szName, nDuplicateParamSize );
+}
+
 PLATFORM_INTERFACE bool ReleaseThreadHandle( ThreadHandle_t );
 
 
@@ -1016,7 +1022,6 @@ enum RWLockTranstionResult_t
 	RWLTR_STATE_REMAINED_VALID = 1,
 };
 
-// AMNOTE: Incomplete, tier0 doesn't export LockForRead, UnlockRead and LockForWrite
 class CThreadRWLock_FastRead
 {
 public:
@@ -1032,6 +1037,11 @@ public:
 
 	DLL_CLASS_IMPORT CThreadRWLock_FastRead();
 
+	bool TryLockForRead( const char *pFileName = NULL, int nLine = -1 );
+	void LockForRead( const char *pFileName = NULL, int nLine = -1 );
+	void UnlockRead( const char *pFileName = NULL, int nLine = -1 );
+	// Recursive for the writing thread; blocks new reads like TRANSITION_UNK002
+	void LockForWrite( const char *pFileName = NULL, int nLine = -1 );
 	DLL_CLASS_IMPORT void UnlockWrite( const char *pFileName = NULL, int nLine = -1 );
 	DLL_CLASS_IMPORT RWLockTranstionResult_t UnlockRead_LockForWrite( const char *pFileName, int nLine, WriteLockTransition_t transition );
 	DLL_CLASS_IMPORT RWLockTranstionResult_t UnlockWrite_LockForRead( const char *pFileName = NULL, int nLine = -1 );
@@ -1054,6 +1064,50 @@ private:
 	ThreadId_t m_WritingThreadID;
 	int m_nWritingThreadLockCount;
 };
+
+inline bool CThreadRWLock_FastRead::TryLockForRead( const char *pFileName, int nLine )
+{
+	uint32 nInterlock = ++m_Interlock;
+	if ( nInterlock & 0xC0000000 )
+		return EncounteredComplexReadLockOperation( nInterlock, false, pFileName, nLine );
+
+	return true;
+}
+
+inline void CThreadRWLock_FastRead::LockForRead( const char *pFileName, int nLine )
+{
+	uint32 nInterlock = ++m_Interlock;
+	if ( nInterlock & 0xC0000000 )
+		EncounteredComplexReadLockOperation( nInterlock, true, pFileName, nLine );
+}
+
+inline void CThreadRWLock_FastRead::UnlockRead( const char *pFileName, int nLine )
+{
+	uint32 nInterlock = --m_Interlock;
+	if ( nInterlock & 0xC0000000 )
+		UnlockReadAccounting( pFileName, nLine, nInterlock );
+}
+
+inline void CThreadRWLock_FastRead::LockForWrite( const char *pFileName, int nLine )
+{
+	ThreadId_t threadId = ThreadGetCurrentId();
+	if ( threadId == m_WritingThreadID )
+	{
+		++m_nWritingThreadLockCount;
+	}
+	else
+	{
+		// Queue behind the other writers
+		if ( m_Interlock.AtomicAdd( 0x100000 ) & 0x3FF00000 )
+			m_WriteLockQueue.Wait();
+
+		m_WritingThreadID = threadId;
+		m_nWritingThreadLockCount = 1;
+	}
+
+	if ( !( m_Interlock & 0x40000000 ) )
+		HaveWriteLock_BlockReadsNow( false );
+}
 
 //-----------------------------------------------------------------------------
 //
