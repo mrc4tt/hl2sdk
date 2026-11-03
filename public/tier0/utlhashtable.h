@@ -46,6 +46,7 @@
 #include "mathlib/mathlib.h"
 #include "utllinkedlist.h"
 
+#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -208,6 +209,48 @@ public:
 	// Iteration functions
 	handle_t FirstHandle() const { return NextHandle( (handle_t) -1 ); }
 	handle_t NextHandle( handle_t start ) const;
+
+	// STL / C++11-style iterators over the key/value pairs, in handle order, with the key in m_key and the value in
+	// m_value (no m_value when ValueT is empty_t). Changing a pair's key breaks lookups of it.
+	template <bool bConstIterator>
+	class IteratorT
+	{
+	public:
+		typedef typename CTypeSelect<bConstIterator, const CUtlHashtable, CUtlHashtable>::type Table_t;
+
+		typedef std::forward_iterator_tag iterator_category;
+		typedef typename CTypeSelect<bConstIterator, const KVPair, KVPair>::type value_type;
+		typedef value_type *pointer;
+		typedef value_type &reference;
+		typedef intp difference_type;
+
+		IteratorT() {}
+		IteratorT( Table_t *pTable, handle_t h ) : m_pTable( pTable ), m_hElement( h ) {}
+		IteratorT( const IteratorT<false> &copy_or_requalify_to_const ) : m_pTable( copy_or_requalify_to_const.m_pTable ), m_hElement( copy_or_requalify_to_const.m_hElement ) {}
+
+		IteratorT &operator++() { m_hElement = m_pTable->NextHandle( m_hElement ); return *this; }
+		IteratorT operator++( int ) { IteratorT pre = *this; ++*this; return pre; }
+
+		template <bool bOtherConst> bool operator==( const IteratorT<bOtherConst> &other ) const { return m_hElement == other.m_hElement; }
+		template <bool bOtherConst> bool operator!=( const IteratorT<bOtherConst> &other ) const { return m_hElement != other.m_hElement; }
+
+		value_type &operator*() const { return *m_pTable->m_table[m_hElement].operator->(); }
+		value_type *operator->() const { return m_pTable->m_table[m_hElement].operator->(); }
+
+		handle_t Handle() const { return m_hElement; }
+
+	private:
+		template <bool> friend class IteratorT;
+
+		Table_t *m_pTable = nullptr;
+		handle_t m_hElement = InvalidHandle();
+	};
+	typedef IteratorT<false> iterator;
+	typedef IteratorT<true> const_iterator;
+	iterator begin() { return iterator( this, FirstHandle() ); }
+	const_iterator begin() const { return const_iterator( this, FirstHandle() ); }
+	iterator end() { return iterator( this, InvalidHandle() ); }
+	const_iterator end() const { return const_iterator( this, InvalidHandle() ); }
 
 	// Returns the number of unique keys in the table
 	int Count() const { return m_nUsed; }
@@ -878,6 +921,15 @@ public:
 	void RemoveAll() { m_table.RemoveAll(); m_data.RemoveAll(); }
 	void Purge() { m_table.Purge(); m_data.Purge(); }
 	int Count() const { return m_table.Count(); }
+
+	// STL / C++11-style iterators over the key/value pairs, in insertion order, with the key in m_key and the value in
+	// m_value (no m_value when ValueT is empty_t). Changing a pair's key breaks lookups of it.
+	typedef typename LinkedList_t::iterator iterator;
+	typedef typename LinkedList_t::const_iterator const_iterator;
+	iterator begin() { return m_data.begin(); }
+	const_iterator begin() const { return m_data.begin(); }
+	iterator end() { return m_data.end(); }
+	const_iterator end() const { return m_data.end(); }
 
 	typedef typename KVPair::ValueReturn_t Element_t;
 	KeyT const &Key( UtlHashHandle_t idx ) const { return m_data[idx].m_key; }

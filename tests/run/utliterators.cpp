@@ -7,6 +7,7 @@
 #include "tier0/utlhashmap.h"
 #include "tier0/utlstring.h"
 #include "tier0/utlblockvector.h"
+#include "tier0/utlhashtable.h"
 #include "tier0/utlvectorultraconservative.h"
 
 #include <algorithm>
@@ -318,6 +319,89 @@ static void TestDict()
 	CHECK( i == 4 );
 }
 
+static void TestHashtable()
+{
+	CUtlHashtable<int, int> table;
+	CHECK( table.begin() == table.end() );
+
+	for ( int v : s_Values )
+		table.Insert( v, v * 10 );
+	table.Remove( s_Values[2] );
+
+	// Yields the pairs in the order FOR_EACH_HASHTABLE visits their handles
+	auto it = table.begin();
+	int nVisited = 0;
+	FOR_EACH_HASHTABLE( table, h )
+	{
+		CHECK( it != table.end() && it.Handle() == h && it->m_key == table.Key( h ) && &it->m_value == &table[h] );
+		++it;
+		++nVisited;
+	}
+	CHECK( it == table.end() && nVisited == s_nValues - 1 );
+
+	int nSum = 0;
+	for ( auto &pair : table )
+	{
+		CHECK( pair.m_key != s_Values[2] && pair.m_value == pair.m_key * 10 );
+		pair.m_value = -pair.m_key;
+		nSum += pair.m_key;
+	}
+	CHECK( nSum == std::accumulate( s_Values, s_Values + s_nValues, 0 ) - s_Values[2] );
+
+	const CUtlHashtable<int, int> &ctable = table;
+	CUtlHashtable<int, int>::const_iterator cit = table.begin();
+	CHECK( cit == ctable.begin() );
+	nVisited = 0;
+	for ( const auto &pair : ctable )
+	{
+		CHECK( pair.m_value == -pair.m_key );
+		++nVisited;
+	}
+	CHECK( nVisited == s_nValues - 1 && std::distance( ctable.begin(), ctable.end() ) == s_nValues - 1 );
+
+	CUtlHashtable<int> set;
+	for ( int v : s_Values )
+		set.Insert( v );
+	nSum = 0;
+	for ( const auto &pair : set )
+		nSum += pair.m_key;
+	CHECK( nSum == std::accumulate( s_Values, s_Values + s_nValues, 0 ) );
+
+	table.RemoveAll();
+	CHECK( table.begin() == table.end() );
+}
+
+static void TestStableHashtable()
+{
+	CUtlStableHashtable<int, int> table;
+	CHECK( table.begin() == table.end() );
+
+	for ( int v : s_Values )
+		table.Insert( v, v * 10 );
+	table.Remove( s_Values[2] );
+
+	// Yields the pairs in insertion order
+	int i = 0;
+	for ( auto &pair : table )
+	{
+		if ( i == 2 )
+			++i;
+		CHECK( i < s_nValues && pair.m_key == s_Values[i] && pair.m_value == s_Values[i] * 10 );
+		pair.m_value = -pair.m_key;
+		++i;
+	}
+	CHECK( i == s_nValues );
+
+	const CUtlStableHashtable<int, int> &ctable = table;
+	int nVisited = 0;
+	for ( const auto &pair : ctable )
+	{
+		CHECK( pair.m_value == -pair.m_key && ctable.Find( pair.m_key ) != ctable.InvalidHandle() );
+		++nVisited;
+	}
+	CHECK( nVisited == s_nValues - 1 );
+}
+
 // The FOR_EACH loops take the container's index type, so they also work with unsigned ones
 static void TestUnsignedIndexLoops()
 {
@@ -429,6 +513,8 @@ int main()
 	TestRBTree();
 	TestOrderedMap();
 	TestDict();
+	TestHashtable();
+	TestStableHashtable();
 	TestUnsignedIndexLoops();
 	TestWideIndexLoops();
 
