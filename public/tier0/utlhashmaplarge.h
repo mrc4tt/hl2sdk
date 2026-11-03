@@ -50,7 +50,7 @@ public:
 //	This container is well suited for large and growing datasets. It uses less
 //	memory than other hash maps and incrementally rehashes to reduce reallocation spikes.
 //
-// Iterate it with FOR_EACH_MAP_FAST or First() and Next().
+// Iterate it with IterKeys(), IterValues() and IterItems(), FOR_EACH_MAP_FAST, or First() and Next().
 //
 //-----------------------------------------------------------------------------
 template <typename K, typename T, typename L = CUtlHashMapLargeDefEquals<K>, typename H = MurmurHash3Functor<K>>
@@ -339,6 +339,113 @@ private:
 
 	EqualityFunc_t m_EqualityFunc;
 	HashFunc_t m_HashFunc;
+
+public:
+	//
+	// Range-based for loop iteration over the map. You can iterate
+	// over the keys, the values ("elements"), or both ("items").
+	//
+	//   for ( auto k : map.IterKeys() ) { ... }
+	//   for ( auto &v : map.IterValues() ) { ... }
+	//   for ( auto item : map.IterItems() )
+	//   {
+	//       int i = item.Index();
+	//       auto &k = item.Key();
+	//       auto &v = item.Element();
+	//   }
+	//
+
+	// A reference to a key/value pair in a map
+	class ItemRef
+	{
+	protected:
+		Node_t &m_node;
+		const IndexType_t m_idx;
+	public:
+		ItemRef( const CUtlHashMapLarge &map, IndexType_t idx ) : m_node( const_cast<Node_t &>( map.m_memNodes[idx] ) ), m_idx( idx ) {}
+		ItemRef( const ItemRef &x ) = default;
+		IndexType_t Index() const { return m_idx; }
+		const KeyType_t &Key() const { return m_node.m_key; }
+		const ElemType_t &Element() const { return m_node.m_elem; }
+	};
+	struct MutableItemRef : ItemRef
+	{
+		MutableItemRef( CUtlHashMapLarge &map, IndexType_t idx ) : ItemRef( map, idx ) {}
+		MutableItemRef( const MutableItemRef &x ) = default;
+		using ItemRef::Element;
+		ElemType_t &Element() const { return this->m_node.m_elem; }
+	};
+
+	// Base class iterator
+	class Iterator
+	{
+	protected:
+		CUtlHashMapLarge &m_map;
+		IndexType_t m_idx;
+	public:
+		Iterator( const CUtlHashMapLarge &map, IndexType_t idx ) : m_map( const_cast<CUtlHashMapLarge &>( map ) ), m_idx( idx ) {}
+		Iterator( const Iterator &x ) = default;
+		bool operator==( const Iterator &x ) const { return &m_map == &x.m_map && m_idx == x.m_idx; }
+		bool operator!=( const Iterator &x ) const { return &m_map != &x.m_map || m_idx != x.m_idx; }
+		void operator++()
+		{
+			if ( m_idx != kInvalidIndex )
+				m_idx = m_map.Next( m_idx );
+		}
+	};
+	struct MutableIterator : Iterator
+	{
+		MutableIterator( const MutableIterator &x ) = default;
+		MutableIterator( CUtlHashMapLarge &map, IndexType_t idx ) : Iterator( map, idx ) {}
+	};
+	struct KeyIterator : Iterator
+	{
+		using Iterator::Iterator;
+		const KeyType_t &operator*() { return this->m_map.m_memNodes[this->m_idx].m_key; }
+	};
+	struct ConstValueIterator : Iterator
+	{
+		using Iterator::Iterator;
+		const ElemType_t &operator*() { return this->m_map.m_memNodes[this->m_idx].m_elem; }
+	};
+	struct MutableValueIterator : MutableIterator
+	{
+		using MutableIterator::MutableIterator;
+		ElemType_t &operator*() { return this->m_map.m_memNodes[this->m_idx].m_elem; }
+	};
+	struct ConstItemIterator : Iterator
+	{
+		using Iterator::Iterator;
+		ItemRef operator*() { return ItemRef( this->m_map, this->m_idx ); }
+	};
+	struct MutableItemIterator : MutableIterator
+	{
+		using MutableIterator::MutableIterator;
+		MutableItemRef operator*() { return MutableItemRef( this->m_map, this->m_idx ); }
+	};
+
+	// Internal type used by the IterXxx functions
+	template <typename TIterator>
+	class Range
+	{
+		CUtlHashMapLarge &m_map;
+	public:
+		Range( const CUtlHashMapLarge &map ) : m_map( const_cast<CUtlHashMapLarge &>( map ) ) {}
+		TIterator begin() const { return TIterator( m_map, m_map.First() ); }
+		TIterator end() const { return TIterator( m_map, kInvalidIndex ); }
+	};
+
+	// Iterate over the keys. You will receive a reference to the key.
+	Range<KeyIterator> IterKeys() const { return Range<KeyIterator>( *this ); }
+
+	// Iterate over the values ("elements"). You will receive a reference to the value.
+	Range<ConstValueIterator> IterValues() const { return Range<ConstValueIterator>( *this ); }
+	Range<MutableValueIterator> IterValues() { return Range<MutableValueIterator>( *this ); }
+
+	// Iterate over the "items" (key/value pairs). You will receive a small reference
+	// object that is cheap to copy.
+	Range<ConstItemIterator> IterItems() const { return Range<ConstItemIterator>( *this ); }
+	Range<MutableItemIterator> IterItems() { return Range<MutableItemIterator>( *this ); }
 };
 
 

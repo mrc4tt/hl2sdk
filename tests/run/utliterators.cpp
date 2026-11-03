@@ -5,6 +5,7 @@
 #include "tier0/utlmap.h"
 #include "tier0/utldict.h"
 #include "tier0/utlhashmap.h"
+#include "tier0/utlhashmaplarge.h"
 #include "tier0/utlstring.h"
 #include "tier0/utlblockvector.h"
 #include "tier0/utlhashtable.h"
@@ -470,6 +471,49 @@ static void TestTSHash()
 	CHECK( hash.begin() == hash.end() );
 }
 
+static void TestHashMapLarge()
+{
+	CUtlHashMapLarge<int, int> map;
+	CHECK( map.IterItems().begin() == map.IterItems().end() );
+
+	// Enough elements to grow the buckets and rehash
+	for ( int i = 1; i <= 40; i++ )
+		map.Insert( i, i * 10 );
+	map.Remove( 7 );
+
+	// Keys, values and items walk the same valid indexes in order
+	int nSum = 0, nVisited = 0;
+	auto i = map.First();
+	for ( auto item : map.IterItems() )
+	{
+		CHECK( item.Index() == i && item.Key() == map.Key( i ) && item.Element() == item.Key() * 10 );
+		item.Element() = -item.Key();
+		nSum += item.Key();
+		++nVisited;
+		i = map.Next( i );
+	}
+	CHECK( i == map.InvalidIndex() && nVisited == 39 && nSum == 820 - 7 );
+
+	nSum = 0;
+	for ( const int &k : map.IterKeys() )
+		nSum += k;
+	CHECK( nSum == 820 - 7 );
+
+	for ( int &v : map.IterValues() )
+		v *= 2;
+
+	const CUtlHashMapLarge<int, int> &cmap = map;
+	nSum = 0;
+	for ( const int &v : cmap.IterValues() )
+		nSum += v;
+	for ( auto item : cmap.IterItems() )
+		CHECK( item.Element() == -2 * item.Key() );
+	CHECK( nSum == -2 * ( 820 - 7 ) );
+
+	map.RemoveAll();
+	CHECK( map.IterKeys().begin() == map.IterKeys().end() );
+}
+
 // The FOR_EACH loops take the container's index type, so they also work with unsigned ones
 static void TestUnsignedIndexLoops()
 {
@@ -585,6 +629,7 @@ int main()
 	TestStableHashtable();
 	TestStringMap();
 	TestTSHash();
+	TestHashMapLarge();
 	TestUnsignedIndexLoops();
 	TestWideIndexLoops();
 
