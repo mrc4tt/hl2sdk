@@ -8,6 +8,7 @@
 #include "tier0/utlstring.h"
 #include "tier0/utlblockvector.h"
 #include "tier0/utlhashtable.h"
+#include "tier0/utlstringmap.h"
 #include "tier0/utltshash.h"
 #include "tier0/utlvectorultraconservative.h"
 
@@ -403,6 +404,41 @@ static void TestStableHashtable()
 	CHECK( nVisited == s_nValues - 1 );
 }
 
+static void TestStringMap()
+{
+	CUtlStringMap<int> map;
+	CHECK( map.begin() == map.end() );
+
+	static const char *const names[] = { "charlie", "alpha", "delta", "bravo" };
+	for ( int i = 0; i < 4; i++ )
+		map[names[i]] = i + 1;
+	map["ALPHA"] = 20;
+
+	// Yields the strings in the order they were added, ALPHA being alpha
+	int i = 0;
+	for ( auto [pszKey, elem] : map )
+	{
+		CHECK( i < 4 && strcmp( pszKey, names[i] ) == 0 && elem == ( i == 1 ? 20 : i + 1 ) );
+		elem = -i;
+		++i;
+	}
+	CHECK( i == 4 );
+
+	i = 0;
+	const CUtlStringMap<int> &cmap = map;
+	CUtlStringMap<int>::const_iterator cit = map.begin();
+	CHECK( cit == cmap.begin() && cit.Index() == map.Find( names[0] ) );
+	for ( auto item : cmap )
+	{
+		CHECK( item.key == cmap.String( i ) && item.elem == -i && &item.elem == &cmap[map.Find( names[i] )] );
+		++i;
+	}
+	CHECK( i == 4 && std::distance( cmap.begin(), cmap.end() ) == 4 );
+
+	map.Clear();
+	CHECK( map.begin() == map.end() );
+}
+
 static void TestTSHash()
 {
 	CUtlTSHash<int, 8, int> hash( 16 );
@@ -547,6 +583,7 @@ int main()
 	TestDict();
 	TestHashtable();
 	TestStableHashtable();
+	TestStringMap();
 	TestTSHash();
 	TestUnsignedIndexLoops();
 	TestWideIndexLoops();
