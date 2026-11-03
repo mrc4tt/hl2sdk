@@ -18,6 +18,7 @@
 #include "utlcommon.h"
 #include "commonmacros.h"
 #include "generichash.h"
+#include "tier0/utliterator.h"
 
 typedef unsigned int UtlHashHandle_t;
 
@@ -63,6 +64,17 @@ public:
 
 	UtlHashHandle_t GetFirstHandle() const;
 	UtlHashHandle_t GetNextHandle( UtlHashHandle_t h ) const;
+
+	// STL / C++11-style iterators, in handle order. Changing an element's key breaks lookups of it
+	typedef Data ElemType_t;
+	typedef UtlHashHandle_t IndexType_t;
+	typedef CUtlForwardIteratorImplT< CUtlHash, false > iterator;
+	typedef CUtlForwardIteratorImplT< CUtlHash, true > const_iterator;
+	iterator begin() { return iterator( this, GetFirstHandle() ); }
+	const_iterator begin() const { return const_iterator( this, GetFirstHandle() ); }
+	iterator end() { return iterator( this, InvalidHandle() ); }
+	const_iterator end() const { return const_iterator( this, InvalidHandle() ); }
+	UtlHashHandle_t IteratorNext( UtlHashHandle_t h ) const { return GetNextHandle( h ); }
 
 	// debugging!!
 	void Log( const char *filename );

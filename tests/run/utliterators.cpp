@@ -8,6 +8,7 @@
 #include "tier0/utlhashmaplarge.h"
 #include "tier0/utlstring.h"
 #include "tier0/utlblockvector.h"
+#include "tier0/utlhash.h"
 #include "tier0/utlhashtable.h"
 #include "tier0/utlstringmap.h"
 #include "tier0/utltshash.h"
@@ -543,6 +544,58 @@ static void TestQueue()
 	CHECK( queue.begin() == queue.end() );
 }
 
+struct HashItem_t
+{
+	int m_nKey;
+	int m_nValue;
+};
+
+struct HashItemEquals
+{
+	bool operator()( const HashItem_t &a, const HashItem_t &b ) const { return a.m_nKey == b.m_nKey; }
+};
+
+struct HashItemHash
+{
+	unsigned int operator()( const HashItem_t &a ) const { return a.m_nKey; }
+};
+
+static void TestHash()
+{
+	typedef CUtlHash<HashItem_t, HashItemEquals, HashItemHash> Hash_t;
+	Hash_t hash( 8, 0, 0, HashItemEquals(), HashItemHash() );
+	CHECK( hash.begin() == hash.end() );
+
+	// More elements than buckets, so some share one
+	for ( int i = 1; i <= 20; i++ )
+		hash.Insert( { i, i * 10 } );
+	hash.Remove( hash.Find( { 7, 0 } ) );
+
+	// Yields the handles GetFirstHandle and GetNextHandle walk
+	int nSum = 0, nVisited = 0;
+	UtlHashHandle_t h = hash.GetFirstHandle();
+	for ( auto it = hash.begin(); it != hash.end(); ++it )
+	{
+		CHECK( it._index() == h && it->m_nValue == it->m_nKey * 10 && hash.Find( *it ) == h );
+		it->m_nValue = -it->m_nKey;
+		nSum += it->m_nKey;
+		++nVisited;
+		h = hash.GetNextHandle( h );
+	}
+	CHECK( h == hash.InvalidHandle() && nVisited == 19 && nSum == 210 - 7 );
+
+	const Hash_t &chash = hash;
+	Hash_t::const_iterator cit = hash.begin();
+	CHECK( cit == chash.begin() );
+	nSum = 0;
+	for ( const HashItem_t &item : chash )
+		nSum += item.m_nValue;
+	CHECK( nSum == -( 210 - 7 ) && std::distance( chash.begin(), chash.end() ) == chash.Count() );
+
+	hash.RemoveAll();
+	CHECK( hash.begin() == hash.end() );
+}
+
 // The FOR_EACH loops take the container's index type, so they also work with unsigned ones
 static void TestUnsignedIndexLoops()
 {
@@ -660,6 +713,7 @@ int main()
 	TestTSHash();
 	TestHashMapLarge();
 	TestQueue();
+	TestHash();
 	TestUnsignedIndexLoops();
 	TestWideIndexLoops();
 
