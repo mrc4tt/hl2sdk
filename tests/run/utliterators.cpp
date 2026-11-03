@@ -11,6 +11,7 @@
 #include "tier0/utlhashtable.h"
 #include "tier0/utlstringmap.h"
 #include "tier0/utltshash.h"
+#include "tier0/utlqueue.h"
 #include "tier0/utlvectorultraconservative.h"
 
 #include <algorithm>
@@ -514,6 +515,34 @@ static void TestHashMapLarge()
 	CHECK( map.IterKeys().begin() == map.IterKeys().end() );
 }
 
+static void TestQueue()
+{
+	CUtlQueue<int> queue( 0, 8 );
+	CHECK( queue.begin() == queue.end() );
+
+	// Filling the allocation, removing from the head and adding more wraps the ring around
+	for ( int i = 0; i < 8; i++ )
+		queue.Insert( i );
+	for ( int i = 0; i < 3; i++ )
+		queue.RemoveAtHead();
+	for ( int i = 8; i < 10; i++ )
+		queue.Insert( i );
+
+	static const int expected[] = { 3, 4, 5, 6, 7, 8, 9 };
+	int i = 0;
+	for ( const int &v : queue )
+	{
+		CHECK( i < 7 && v == expected[i] );
+		++i;
+	}
+	CHECK( i == 7 && std::distance( queue.begin(), queue.end() ) == queue.Count() );
+	CHECK( YieldsReversed( queue, expected, 7 ) );
+	CHECK( *queue.begin() == queue.Head() && *std::prev( queue.end() ) == queue.Tail() );
+
+	queue.RemoveAll();
+	CHECK( queue.begin() == queue.end() );
+}
+
 // The FOR_EACH loops take the container's index type, so they also work with unsigned ones
 static void TestUnsignedIndexLoops()
 {
@@ -630,6 +659,7 @@ int main()
 	TestStringMap();
 	TestTSHash();
 	TestHashMapLarge();
+	TestQueue();
 	TestUnsignedIndexLoops();
 	TestWideIndexLoops();
 

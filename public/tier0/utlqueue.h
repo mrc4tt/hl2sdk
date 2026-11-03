@@ -13,6 +13,7 @@
 
 #include "utlleanvector.h"
 #include "utlvectormemory.h"
+#include "tier0/utliterator.h"
 
 enum QueueIter_t { QUEUE_ITERATOR_INVALID = 0xffffffff };
 
@@ -60,6 +61,16 @@ public:
 	QueueIter_t Previous( QueueIter_t it ) const;
 	bool IsValid( QueueIter_t it ) const;
 	T const& Element( QueueIter_t it ) const;
+
+	// STL / C++11-style iterators, from head to tail; the elements are const, like Element()'s
+	typedef T ElemType_t;
+	typedef QueueIter_t IndexType_t;
+	typedef CUtlBidirectionalIteratorImplT< CUtlQueue, true > const_iterator;
+	typedef const_iterator iterator;
+	const_iterator begin() const { return const_iterator( this, First() ); }
+	const_iterator end() const { return const_iterator( this, QUEUE_ITERATOR_INVALID ); }
+	QueueIter_t IteratorNext( QueueIter_t it ) const { return Next( it ); }
+	QueueIter_t IteratorPrev( QueueIter_t it ) const { return it == QUEUE_ITERATOR_INVALID ? Last() : Previous( it ); }
 
 	// Returns the count of elements in the queue
 	int			Count() const;
