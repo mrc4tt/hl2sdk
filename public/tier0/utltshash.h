@@ -17,6 +17,7 @@
 #include <limits.h>
 #include "tier0/threadtools.h"
 #include "tier0/mempool.h"
+#include "tier0/utliterator.h"
 #include "generichash.h"
 
 
@@ -142,7 +143,22 @@ public:
 	// Convert element * to hashHandle
 	UtlTSHashHandle_t ElementPtrToHandle( T* pElement ) const;
 
+	// STL / C++11-style iterators over the elements, in no particular order. Unlike GetElements they take no locks,
+	// so only iterate while no thread inserts or removes
+	typedef T ElemType_t;
+	typedef UtlTSHashHandle_t IndexType_t;
+	typedef CUtlForwardIteratorImplT< CUtlTSHash, false > iterator;
+	typedef CUtlForwardIteratorImplT< CUtlTSHash, true > const_iterator;
+	iterator begin() { return iterator( this, FirstInBucket( 0 ) ); }
+	const_iterator begin() const { return const_iterator( this, FirstInBucket( 0 ) ); }
+	iterator end() { return iterator( this, InvalidHandle() ); }
+	const_iterator end() const { return const_iterator( this, InvalidHandle() ); }
+	UtlTSHashHandle_t IteratorNext( UtlTSHashHandle_t hHash ) const;
+
 private:
+	// The first element in iBucket or a later bucket
+	UtlTSHashHandle_t FirstInBucket( int iBucket ) const;
+
 	// Templatized for memory tracking purposes
 	template < typename Data_t >
 	struct HashFixedDataInternal_t
@@ -254,6 +270,28 @@ int CUtlTSHash<T,BUCKET_COUNT,KEYTYPE,HashFuncs>::GetElements( int nFirstElement
 		bucket.m_AddLock.UnlockRead( __FILE__, __LINE__ );
 	}
 	return nIndex;
+}
+
+
+template<class T, int BUCKET_COUNT, class KEYTYPE, class HashFuncs> 
+UtlTSHashHandle_t CUtlTSHash<T,BUCKET_COUNT,KEYTYPE,HashFuncs>::FirstInBucket( int iBucket ) const
+{
+	for ( ; iBucket < BUCKET_COUNT; iBucket++ )
+	{
+		if ( m_aBuckets[ iBucket ].m_pFirstUncommitted )
+			return (UtlTSHashHandle_t)m_aBuckets[ iBucket ].m_pFirstUncommitted;
+	}
+	return InvalidHandle();
+}
+
+template<class T, int BUCKET_COUNT, class KEYTYPE, class HashFuncs> 
+UtlTSHashHandle_t CUtlTSHash<T,BUCKET_COUNT,KEYTYPE,HashFuncs>::IteratorNext( UtlTSHashHandle_t hHash ) const
+{
+	const HashFixedData_t *pElement = (const HashFixedData_t *)hHash;
+	if ( pElement->m_pNext )
+		return (UtlTSHashHandle_t)pElement->m_pNext;
+
+	return FirstInBucket( HashFuncs::Hash( pElement->m_uiKey, BUCKET_MASK ) + 1 );
 }
 
 

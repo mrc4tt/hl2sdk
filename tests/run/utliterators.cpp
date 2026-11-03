@@ -8,6 +8,7 @@
 #include "tier0/utlstring.h"
 #include "tier0/utlblockvector.h"
 #include "tier0/utlhashtable.h"
+#include "tier0/utltshash.h"
 #include "tier0/utlvectorultraconservative.h"
 
 #include <algorithm>
@@ -402,6 +403,37 @@ static void TestStableHashtable()
 	CHECK( nVisited == s_nValues - 1 );
 }
 
+static void TestTSHash()
+{
+	CUtlTSHash<int, 8, int> hash( 16 );
+	CHECK( hash.begin() == hash.end() );
+
+	// More elements than buckets, so some share one
+	for ( int i = 1; i <= 20; i++ )
+		hash.Insert( i, i * 10 );
+	hash.Commit();
+	hash.FindAndRemove( 7 );
+
+	int nSum = 0, nVisited = 0;
+	for ( auto it = hash.begin(); it != hash.end(); ++it )
+	{
+		CHECK( *it == hash.GetID( it._index() ) * 10 && hash.Find( hash.GetID( it._index() ) ) == it._index() );
+		*it = -*it;
+		nSum += hash.GetID( it._index() );
+		++nVisited;
+	}
+	CHECK( nVisited == 19 && nSum == 210 - 7 );
+
+	const CUtlTSHash<int, 8, int> &chash = hash;
+	nSum = 0;
+	for ( const int &v : chash )
+		nSum += v;
+	CHECK( nSum == -( 2100 - 70 ) && std::distance( chash.begin(), chash.end() ) == chash.Count() );
+
+	hash.RemoveAll();
+	CHECK( hash.begin() == hash.end() );
+}
+
 // The FOR_EACH loops take the container's index type, so they also work with unsigned ones
 static void TestUnsignedIndexLoops()
 {
@@ -515,6 +547,7 @@ int main()
 	TestDict();
 	TestHashtable();
 	TestStableHashtable();
+	TestTSHash();
 	TestUnsignedIndexLoops();
 	TestWideIndexLoops();
 
