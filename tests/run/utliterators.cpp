@@ -7,6 +7,7 @@
 #include "tier0/utlhashmap.h"
 #include "tier0/utlstring.h"
 #include "tier0/utlblockvector.h"
+#include "tier0/utlvectorultraconservative.h"
 
 #include <algorithm>
 #include <iterator>
@@ -139,6 +140,11 @@ static void TestVectors()
 
 	{
 		CUtlLeanVector<int> vec;
+		TestVector( vec, 100 );
+	}
+
+	{
+		CUtlVectorUltraConservative<int> vec;
 		TestVector( vec, 100 );
 	}
 

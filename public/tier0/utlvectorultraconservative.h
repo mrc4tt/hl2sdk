@@ -100,6 +100,14 @@ public:
 	T* Base() { return m_pData ? reinterpret_cast<T *>( m_pData->m_Elements ) : nullptr; }
 	const T* Base() const { return m_pData ? reinterpret_cast<const T *>( m_pData->m_Elements ) : nullptr; }
 
+	// STL / C++11-style iterators
+	typedef T* iterator;
+	typedef const T* const_iterator;
+	iterator begin() { return Base(); }
+	const_iterator begin() const { return Base(); }
+	iterator end() { return Base() + Count(); }
+	const_iterator end() const { return Base() + Count(); }
+
 	void EnsureCapacity( int num )
 	{
 		int nCurCount = Count();
