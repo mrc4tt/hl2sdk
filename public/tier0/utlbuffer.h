@@ -338,7 +338,9 @@ protected:
 
 	// Help with delimited stuff
 	DLL_CLASS_IMPORT char GetDelimitedCharInternal( CUtlCharConversion *pConv );
+#ifndef PLATFORM_LINUX
 	DLL_CLASS_IMPORT void PutDelimitedCharInternal( CUtlCharConversion *pConv, char c );
+#endif
 
 	// Default overflow funcs
 	DLL_CLASS_IMPORT bool PutOverflow( int nSize );
