@@ -107,8 +107,6 @@ PLATFORM_OVERLOAD int V_UnicodeBufferLength( const uchar32 *pUTF16, int size, bo
 // You can pass a REPLACE or FAIL policy if you would prefer to replace characters with '?' or clear the entire string.
 // Returns nonzero on success, or 0 if the policy is FAIL and an invalid sequence was found.
 PLATFORM_OVERLOAD int V_UnicodeRepair( char *pUTF8, EStringConvertErrorPolicy ePolicy = STRINGCONVERT_SKIP );
-PLATFORM_OVERLOAD int V_UnicodeRepair( uchar16 *pUTF16, EStringConvertErrorPolicy ePolicy = STRINGCONVERT_SKIP );
-PLATFORM_OVERLOAD int V_UnicodeRepair( uchar32 *pUTF32, EStringConvertErrorPolicy ePolicy = STRINGCONVERT_SKIP );
 
 // Advance pointer forward by N Unicode code points (printed glyphs or non-printing characters), stopping at terminating null if encountered.
 PLATFORM_OVERLOAD char *V_UnicodeAdvance( char *pUTF8, int nCharacters );
