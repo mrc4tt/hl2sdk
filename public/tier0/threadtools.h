@@ -100,9 +100,10 @@ PLATFORM_INTERFACE void ThreadNanoSleep( uint32 nNanoseconds );
 PLATFORM_INTERFACE void ThreadYield();
 // Busy waits for nCycles ticks of the CPU's timestamp counter
 PLATFORM_INTERFACE void ThreadSpin( uint32 nCycles );
-PLATFORM_INTERFACE ThreadId_t ThreadGetCurrentId();
 PLATFORM_INTERFACE ThreadHandle_t ThreadGetCurrentHandle();
+#ifndef PLATFORM_LINUX
 PLATFORM_INTERFACE int ThreadGetPriority( ThreadHandle_t hThread = NULL );
+#endif
 PLATFORM_INTERFACE bool ThreadSetPriority( ThreadHandle_t hThread, int priority );
 inline		 bool ThreadSetPriority( int priority ) { return ThreadSetPriority( NULL, priority ); }
 PLATFORM_INTERFACE bool ThreadInMainThread();
@@ -124,6 +125,8 @@ PLATFORM_INTERFACE ThreadedLoadLibraryFunc_t GetThreadedLoadLibraryFunc();
 #if defined( PLATFORM_WINDOWS_PC )
 DLL_IMPORT unsigned long STDCALL GetCurrentThreadId();
 #define ThreadGetCurrentId GetCurrentThreadId
+#else
+PLATFORM_INTERFACE ThreadId_t ThreadGetCurrentId();
 #endif
 
 inline void ThreadPause()
@@ -144,8 +147,6 @@ PLATFORM_INTERFACE void ThreadSetDebugNameS2( ThreadHandle_t hThread, const char
 inline		 void ThreadSetDebugName( const char *pszName ) { ThreadSetDebugNameS2( NULL, pszName ); }
 PLATFORM_INTERFACE bool ThreadGetDebugNameForThreadHandle( ThreadHandle_t hThread, char *pszNameOut, size_t nNameOutSize );
 PLATFORM_INTERFACE bool ThreadGetDebugNameForThreadId( ThreadId_t nThreadId, char *pszNameOut, size_t nNameOutSize );
-
-PLATFORM_INTERFACE void ThreadSetAffinity( ThreadHandle_t hThread, int nAffinityMask );
 
 // Fills pSortIndices with indices into CPUInformation::m_pProcessorInfo, highest m_EfficiencyClass first,
 // returning how many it wrote (0 without processor info)
@@ -239,189 +240,6 @@ PLATFORM_INTERFACE void ThreadNotifySyncReleasing(void *p);
 #define ThreadNotifySyncAcquired(p)		((void)0)
 #define ThreadNotifySyncReleasing(p)	((void)0)
 #endif
-
-//-----------------------------------------------------------------------------
-// Encapsulation of a thread local datum (needed because THREAD_LOCAL doesn't
-// work in a DLL loaded with LoadLibrary()
-//-----------------------------------------------------------------------------
-
-#ifndef NO_THREAD_LOCAL
-
-#ifdef _LINUX
-// linux totally supports compiler thread locals, even across dll's.
-#define PLAT_COMPILER_SUPPORTED_THREADLOCALS 1
-#define CTHREADLOCALINTEGER( typ ) __thread int
-#define CTHREADLOCALINT __thread int
-#define CTHREADLOCALPTR( typ ) __thread typ *
-#define CTHREADLOCAL( typ ) __thread typ
-#define GETLOCAL( x ) ( x )
-#endif
-
-#if defined( _WIN32 ) || defined( OSX )
-#ifndef __AFXTLS_H__ // not compatible with some Windows headers
-
-#define CTHREADLOCALINT GenericThreadLocals::CThreadLocalInt<int>
-#define CTHREADLOCALINTEGER( typ ) GenericThreadLocals::CThreadLocalInt<typ>
-#define CTHREADLOCALPTR( typ ) GenericThreadLocals::CThreadLocalPtr<typ>
-#define CTHREADLOCAL( typ ) GenericThreadLocals::CThreadLocal<typ>
-#define GETLOCAL( x ) ( x.Get() )
-
-
-namespace GenericThreadLocals
-{
-	// a (not so efficient) implementation of thread locals for compilers without full support (i.e. visual c).
-	// don't use this explicity - instead, use the CTHREADxxx macros above.
-
-	class PLATFORM_CLASS CThreadLocalBase
-	{
-public:
-		CThreadLocalBase();
-		~CThreadLocalBase();
-
-		void * Get() const;
-		void   Set(void *);
-
-private:
-#if defined(POSIX)
-		pthread_key_t m_index;
-#else
-		uint32 m_index;
-#endif
-	};
-
-	//---------------------------------------------------------
-
-	template <class T>
-	class CThreadLocal : public CThreadLocalBase
-	{
-	public:
-		CThreadLocal()
-		{
-#ifdef PLATFORM_64BITS
-			COMPILE_TIME_ASSERT( sizeof(T) <= sizeof(void *) );
-#else
-			COMPILE_TIME_ASSERT( sizeof(T) == sizeof(void *) );
-#endif
-		}
-
-		void operator=( T i ) { Set( i ); }
-
-		T Get() const
-		{
-#ifdef PLATFORM_64BITS
-			void *pData = CThreadLocalBase::Get();
-			return *reinterpret_cast<T*>( &pData );
-#else
-	#ifdef COMPILER_MSVC
-		#pragma warning ( disable : 4311 )
-	#endif
-			return reinterpret_cast<T>( CThreadLocalBase::Get() );
-	#ifdef COMPILER_MSVC
-		#pragma warning ( default : 4311 )
-	#endif
-#endif
-		}
-
-		void Set(T val)
-		{
-#ifdef PLATFORM_64BITS
-			void* pData = 0;
-			*reinterpret_cast<T*>( &pData ) = val;
-			CThreadLocalBase::Set( pData );
-#else
-	#ifdef COMPILER_MSVC
-		#pragma warning ( disable : 4312 )
-	#endif
-			CThreadLocalBase::Set( reinterpret_cast<void *>(val) );
-	#ifdef COMPILER_MSVC
-		#pragma warning ( default : 4312 )
-	#endif
-#endif
-		}
-	};
-
-
-	//---------------------------------------------------------
-
-	template <class T = int32>
-	class CThreadLocalInt : public CThreadLocal<T>
-	{
-	public:
-		operator const T() const { return this->Get(); }
-		int	operator=( T i ) { Set( i ); return i; }
-
-		T operator++()					{ T i = this->Get(); this->Set( ++i ); return i; }
-		T operator++(int)				{ T i = this->Get(); this->Set( i + 1 ); return i; }
-
-		T operator--()					{ T i = this->Get(); this->Set( --i ); return i; }
-		T operator--(int)				{ T i = this->Get(); this->Set( i - 1 ); return i; }
-
-		inline CThreadLocalInt(  ) { }
-		inline CThreadLocalInt( const T &initialvalue )
-		{
-			this->Set( initialvalue );
-		}
-	};
-
-
-	//---------------------------------------------------------
-
-	template <class T>
-	class CThreadLocalPtr : private CThreadLocalBase
-	{
-	public:
-		CThreadLocalPtr() {}
-
-		operator const void *() const          					{ return (const T *)Get(); }
-		operator void *()                      					{ return (T *)Get(); }
-
-		operator const T *() const							    { return (const T *)Get(); }
-		operator const T *()          							{ return (const T *)Get(); }
-		operator T *()											{ return (T *)Get(); }
-
-		T *			operator=( T *p )							{ Set( p ); return p; }
-
-		bool        operator !() const							{ return (!Get()); }
-		bool        operator!=( int i ) const					{ AssertMsg( i == 0, "Only NULL allowed on integer compare" ); return (Get() != NULL); }
-		bool        operator==( int i ) const					{ AssertMsg( i == 0, "Only NULL allowed on integer compare" ); return (Get() == NULL); }
-		bool		operator==( const void *p ) const			{ return (Get() == p); }
-		bool		operator!=( const void *p ) const			{ return (Get() != p); }
-		bool		operator==( const T *p ) const				{ return operator==((const void*)p); }
-		bool		operator!=( const T *p ) const				{ return operator!=((const void*)p); }
-
-		T *  		operator->()								{ return (T *)Get(); }
-		T &  		operator *()								{ return *((T *)Get()); }
-
-		const T *   operator->() const							{ return (const T *)Get(); }
-		const T &   operator *() const							{ return *((const T *)Get()); }
-
-		const T &	operator[]( int i ) const					{ return *((const T *)Get() + i); }
-		T &			operator[]( int i )							{ return *((T *)Get() + i); }
-
-	private:
-		// Disallowed operations
-		CThreadLocalPtr( T *pFrom );
-		CThreadLocalPtr( const CThreadLocalPtr<T> &from );
-		T **operator &();
-		T * const *operator &() const;
-		void operator=( const CThreadLocalPtr<T> &from );
-		bool operator==( const CThreadLocalPtr<T> &p ) const;
-		bool operator!=( const CThreadLocalPtr<T> &p ) const;
-	};
-}
-
-#ifdef _OSX
-PLATFORM_INTERFACE GenericThreadLocals::CThreadLocalInt<int> g_nThreadID;
-#else // _OSX
-#ifndef TIER0_DLL_EXPORT
-__declspec( dllimport ) GenericThreadLocals::CThreadLocalInt<int> g_nThreadID;
-#endif
-#endif // _OSX
-
-#endif /// afx32
-#endif //__win32
-
-#endif // NO_THREAD_LOCAL
 
 //-----------------------------------------------------------------------------
 //
@@ -710,37 +528,6 @@ private:
 	CThreadSemaphore &operator=(const CThreadSemaphore &);
 };
 
-#if defined( _WIN32 )
-
-//-----------------------------------------------------------------------------
-//
-// A mutex suitable for out-of-process, multi-processor usage
-//
-//-----------------------------------------------------------------------------
-
-class PLATFORM_CLASS CThreadFullMutex : public CThreadSyncObject
-{
-public:
-	CThreadFullMutex( bool bEstablishInitialOwnership = false, const char * pszName = NULL );
-
-	//-----------------------------------------------------
-	// Release ownership of the mutex
-	//-----------------------------------------------------
-	bool Release();
-
-	// To match regular CAtomicMutex:
-	void Lock()							{ Wait(); }
-	void Lock( unsigned timeout )		{ Wait( timeout ); }
-	void Unlock()						{ Release(); }
-	bool AssertOwnedByCurrentThread()	{ return true; }
-	void SetTrace( bool )				{}
-
-private:
-	CThreadFullMutex( const CThreadFullMutex & );
-	CThreadFullMutex &operator=( const CThreadFullMutex & );
-};
-#endif
-
 enum NamedEventResult_t
 {
 	TT_EventDoesntExist	= 0,
@@ -975,39 +762,6 @@ private:
 	GateState_t *m_pState;
 };
 
-
-//-----------------------------------------------------------------------------
-//
-// CThreadRWLock
-//
-//-----------------------------------------------------------------------------
-
-class PLATFORM_CLASS CThreadRWLock
-{
-public:
-	CThreadRWLock();
-
-	void LockForRead();
-	void UnlockRead();
-	void LockForWrite();
-	void UnlockWrite();
-
-	void LockForRead() const { const_cast<CThreadRWLock *>(this)->LockForRead(); }
-	void UnlockRead() const { const_cast<CThreadRWLock *>(this)->UnlockRead(); }
-	void LockForWrite() const { const_cast<CThreadRWLock *>(this)->LockForWrite(); }
-	void UnlockWrite() const { const_cast<CThreadRWLock *>(this)->UnlockWrite(); }
-
-private:
-	void WaitForRead();
-
-	CThreadFastMutex m_mutex;
-	CThreadEvent m_CanWrite;
-	CThreadEvent m_CanRead;
-
-	int m_nWriters;
-	int m_nActiveReaders;
-	int m_nPendingReaders;
-};
 
 //-----------------------------------------------------------------------------
 //
@@ -1293,76 +1047,6 @@ private:
 	CThreadManualEvent m_NotSuspendedEvent;
 };
 
-//-----------------------------------------------------------------------------
-// Simple thread class encompasses the notion of a worker thread, handing
-// synchronized communication.
-//-----------------------------------------------------------------------------
-
-// These are internal reserved error results from a call attempt
-enum WTCallResult_t
-{
-	WTCR_FAIL			= -1,
-	WTCR_TIMEOUT		= -2,
-	WTCR_THREAD_GONE	= -3,
-};
-
-class PLATFORM_CLASS CWorkerThread : public CThread
-{
-public:
-	CWorkerThread();
-
-	//-----------------------------------------------------
-	//
-	// Inter-thread communication
-	//
-	// Calls in either direction take place on the same "channel."
-	// Seperate functions are specified to make identities obvious
-	//
-	//-----------------------------------------------------
-
-	// Master: Signal the thread, and block for a response
-	int CallWorker( unsigned, unsigned timeout = TT_INFINITE, bool fBoostWorkerPriorityToMaster = true );
-
-	// Worker: Signal the thread, and block for a response
-	int CallMaster( unsigned, unsigned timeout = TT_INFINITE );
-
-	// Wait for the next request
-	bool WaitForCall( unsigned dwTimeout, unsigned *pResult = NULL );
-	bool WaitForCall( unsigned *pResult = NULL );
-
-	// Is there a request?
-	bool PeekCall( unsigned *pParam = NULL );
-
-	// Reply to the request
-	void Reply( unsigned );
-
-	// Wait for a reply in the case when CallWorker() with timeout != TT_INFINITE
-	int WaitForReply( unsigned timeout = TT_INFINITE );
-
-	// If you want to do WaitForMultipleObjects you'll need to include
-	// this handle in your wait list or you won't be responsive
-	CThreadEvent& GetCallHandle();	// (returns m_EventSend)
-
-	// Find out what the request was
-	unsigned GetCallParam() const;
-
-	// Boost the worker thread to the master thread, if worker thread is lesser, return old priority
-	int BoostPriority();
-
-protected:
-	int Call( unsigned, unsigned timeout, bool fBoost );
-
-private:
-	CWorkerThread( const CWorkerThread & );
-	CWorkerThread &operator=( const CWorkerThread & );
-
-	CThreadEvent	m_EventSend;
-	CThreadEvent	m_EventComplete;
-
-	unsigned        m_Param;
-	int				m_ReturnVal;
-};
-
 
 // a unidirectional message queue. A queue of type T. Not especially high speed since each message
 // is malloced/freed. Note that if your message class has destructors/constructors, they MUST be
@@ -1486,42 +1170,6 @@ inline bool CAtomicMutex::AssertOwnedByCurrentThread()
 	return ThreadGetCurrentId() == m_CurrentOwnerID;
 }
 
-//-----------------------------------------------------------------------------
-//
-// CThreadRWLock inline functions
-//
-//-----------------------------------------------------------------------------
-
-inline CThreadRWLock::CThreadRWLock()
-:	m_CanRead( true ),
-	m_nWriters( 0 ),
-	m_nActiveReaders( 0 ),
-	m_nPendingReaders( 0 )
-{
-}
-
-inline void CThreadRWLock::LockForRead()
-{
-	m_mutex.Lock( __FILE__, __LINE__ );
-	if ( m_nWriters)
-	{
-		WaitForRead();
-	}
-	m_nActiveReaders++;
-	m_mutex.Unlock( __FILE__, __LINE__ );
-}
-
-inline void CThreadRWLock::UnlockRead()
-{
-	m_mutex.Lock( __FILE__, __LINE__ );
-	m_nActiveReaders--;
-	if ( m_nActiveReaders == 0 && m_nWriters != 0 )
-	{
-		m_CanWrite.Set();
-	}
-	m_mutex.Unlock( __FILE__, __LINE__ );
-}
-
 // read data from a memory address
 template<class T> FORCEINLINE T ReadVolatileMemory( T const *pPtr )
 {
@@ -1530,10 +1178,6 @@ template<class T> FORCEINLINE T ReadVolatileMemory( T const *pPtr )
 }
 
 //-----------------------------------------------------------------------------
-
-#ifdef _LINUX
-DLL_GLOBAL_IMPORT __thread int g_nThreadID;
-#endif
 
 #if defined( _WIN32 )
 #pragma warning(pop)
