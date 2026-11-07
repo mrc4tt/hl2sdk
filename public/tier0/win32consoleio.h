@@ -28,4 +28,7 @@ PLATFORM_INTERFACE uint16 SetWin32ConsoleColor( Win32ConsoleColorContext_t *pCon
 
 PLATFORM_INTERFACE void RestoreWin32ConsoleColor( Win32ConsoleColorContext_t *pContext, uint16 prevColor );
 
+// Column of the console cursor on stdout, 0 without a console; always 0 on Linux
+PLATFORM_INTERFACE int GetWin32ConsoleCursorColumnIndex();
+
 #endif 
