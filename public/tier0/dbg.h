@@ -83,8 +83,6 @@ class Color;
 //	 DebuggerBreak();
 //-----------------------------------------------------------------------------
 
-PLATFORM_INTERFACE bool SetupWin32ConsoleIO();
-
 // Returns true if they want to break in the debugger.
 
 /* Used to define macros, never use these directly. */
@@ -245,10 +243,6 @@ PLATFORM_INTERFACE LoggingChannelID_t LOG_DEVELOPER_VERBOSE;
 PLATFORM_INTERFACE LoggingChannelID_t LOG_SYMBOLS;
 PLATFORM_INTERFACE LoggingChannelID_t LOG_VPROF;
 
-// Legacy logging functions
-
-PLATFORM_INTERFACE void Warning_SpewCallStack( int iMaxCallStackLength, const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 );
-
 // AMNOTE: Required for Error method, without including whole strtools.h
 PLATFORM_INTERFACE int V_vsnprintf( OUT_Z_CAP( maxLenInCharacters ) char *pDest, int maxLenInCharacters, PRINTF_FORMAT_STRING const char *pFormat, va_list params );
 
@@ -330,21 +324,6 @@ inline DEST_POINTER_TYPE assert_cast(SOURCE_POINTER_TYPE* pSource)
 #else
 #define assert_cast static_cast
 #endif
-
-//-----------------------------------------------------------------------------
-// Templates to assist in validating pointers:
-
-// Have to use these stubs so we don't have to include windows.h here.
-PLATFORM_INTERFACE void _AssertValidReadPtr( void* ptr, int count = 1 );
-PLATFORM_INTERFACE void _AssertValidWritePtr( void* ptr, int count = 1 );
-PLATFORM_INTERFACE void _AssertValidReadWritePtr( void* ptr, int count = 1 );
-
-template<class T> inline void AssertValidReadPtr( T* ptr, int count = 1 )		     { _AssertValidReadPtr( (void*)ptr, count ); }
-template<class T> inline void AssertValidWritePtr( T* ptr, int count = 1 )		     { _AssertValidWritePtr( (void*)ptr, count ); }
-template<class T> inline void AssertValidReadWritePtr( T* ptr, int count = 1 )	     { _AssertValidReadWritePtr( (void*)ptr, count ); }
-
-
-#define AssertValidThis() AssertValidReadWritePtr(this,sizeof(*this))
 
 //-----------------------------------------------------------------------------
 // Macro to protect functions that are not reentrant
@@ -555,76 +534,6 @@ private:
 
 #endif
 
-// Code for programmatically setting/unsetting hardware breakpoints
-#ifdef IS_WINDOWS_PC
-
-typedef void * HardwareBreakpointHandle_t;
-
-enum EHardwareBreakpointType
-{
-	BREAKPOINT_EXECUTE = 0,
-	BREAKPOINT_WRITE,
-	BREAKPOINT_READWRITE,
-};
-
-enum EHardwareBreakpointSize
-{
-	BREAKPOINT_SIZE_1 = 1,
-	BREAKPOINT_SIZE_2 = 2,
-	BREAKPOINT_SIZE_4 = 4,
-	BREAKPOINT_SIZE_8 = 8,
-};
-
-PLATFORM_INTERFACE HardwareBreakpointHandle_t SetHardwareBreakpoint( EHardwareBreakpointType eType, EHardwareBreakpointSize eSize, const void *pvLocation );
-PLATFORM_INTERFACE bool ClearHardwareBreakpoint( HardwareBreakpointHandle_t handle );
-
-class CHardwareBreakPointScopeGuard
-{
-public:
-	CHardwareBreakPointScopeGuard( const void *pvLocation, size_t nLocationSize, EHardwareBreakpointType eType = BREAKPOINT_WRITE )
-	{
-		EHardwareBreakpointSize eSize = BREAKPOINT_SIZE_4;
-		switch ( nLocationSize )
-		{
-		case 1:
-			eSize = BREAKPOINT_SIZE_1;
-			break;
-		case 2:
-			eSize = BREAKPOINT_SIZE_2;
-			break;
-		case 4:
-			eSize = BREAKPOINT_SIZE_4;
-			break;
-		case 8:
-			eSize = BREAKPOINT_SIZE_8;
-			break;
-		default:
-			Warning( _T( "SetHardwareBreakpoint can only work with 1, 2, 4 or 8 byte data fields." ) );
-			break;
-		}
-
-		m_hBreakPoint = SetHardwareBreakpoint( eType, eSize, pvLocation );
-		m_bActive = m_hBreakPoint != (HardwareBreakpointHandle_t)0;
-	}
-
-	~CHardwareBreakPointScopeGuard()
-	{
-		Release();
-	}
-
-	void Release()
-	{
-		if ( !m_bActive )
-			return;
-		ClearHardwareBreakpoint( m_hBreakPoint );
-	}
-
-private:
-	bool						m_bActive;
-	HardwareBreakpointHandle_t	m_hBreakPoint;
-};
-
-#endif // IS_WINDOWS_PC
 //-----------------------------------------------------------------------------
 
 #endif /* DBG_H */
