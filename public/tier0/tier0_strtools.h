@@ -1070,12 +1070,6 @@ public:
 
 	CUtlCharConversion( char nEscapeChar, const char *pDelimiter, int nCount, const ConversionArray_t *pArray );
 
-	CUtlCharConversion( CUtlCharConversion &&rhs );
-	CUtlCharConversion( const CUtlCharConversion &rhs );
-
-	CUtlCharConversion &operator=( CUtlCharConversion &&rhs );
-	CUtlCharConversion &operator=( const CUtlCharConversion &rhs );
-
 	char GetEscapeChar() const { return m_nEscapeChar; }
 	const char *GetDelimiter() const { return m_pDelimiter; }
 	int GetDelimiterLength() const { return m_nDelimiterLength; }
