@@ -139,8 +139,12 @@ public:
 	virtual CUtlQueue<CNetMessage *> *GetReceivedMessageQueue() = 0;
 	// AMNOTE: Writes the incoming flow's dropped and late frame percentages, which the peer reads in SetRemoteFramerate
 	virtual void	WriteFrameQualityToTick( CNetMessagePB<CNETMsg_Tick> *pMsg ) = 0;
-	// AMNOTE: Received messages beyond the convar's value are reported
-	virtual void	SetQueuedMessageLimitConVar( CConVar<int> *pQueuedMessageLimit ) = 0;
+	// AMNOTE: 14197 removed SetQueuedMessageLimitConVar (with sv_recvbuf_messages) and added this pair.
+	// Stores the type and, when it is 1, switches the channel to a second set of limits: pushes
+	// SteamNetworkingSockets connection config values 47-50 for the open connection.
+	// Real name unknown.
+	virtual void	SetChannelLimitType( int nType ) = 0;
+	virtual int		GetChannelLimitType( void ) const = 0;
 };
 
 
