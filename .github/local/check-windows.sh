@@ -114,7 +114,8 @@ for src in "${RUN_SOURCES[@]}"; do
 	objs=("$(obj "$src")" "$(obj "$SDK/public/tier0/memoverride.cpp")")
 	case "$name" in
 		keyvalues3) objs+=("$(obj "$SDK/tier0_perproject/keyvalues3.cpp")") ;;
-		ccommand) objs+=("$(obj "$SDK/tier0_perproject/convar.cpp")") ;;
+		ccommand|convar) objs+=("$(obj "$SDK/tier0_perproject/convar.cpp")") ;;
+		bitbuf) objs+=("$(obj "$SDK/tier0_perproject/bitbuf.cpp")") ;;
 		cmdkeyvalues) for pb in "$OUT"/pb/*.pb.cc; do objs+=("$(obj "$pb")"); done ;;
 	esac
 	link "$OUT/${name}_test.exe" "${objs[@]}" || status=1
