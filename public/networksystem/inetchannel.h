@@ -29,7 +29,7 @@ class	INetChannel;
 class	INetChannelInfo;
 class	INetMessageBinder;
 class	INetworkMessageProcessingPreFilter;
-class	INetworkMessageInternal;
+struct	NetMessageInfo_t;
 class	INetMessageDispatcher;
 class	InstantReplayMessage_t;
 class	CUtlSlot;
@@ -106,8 +106,8 @@ public:
 	// bConfirmAllMessageHandlersInstalled reports the messages of the channel's categories that have no handler registered
 	virtual void	FinishRegisteringMessageHandlers( bool bConfirmAllMessageHandlersInstalled ) = 0;
 	
-	virtual void	RegisterNetMessageHandlerAbstract( CUtlSlot *nSlot, const CUtlAbstractDelegate &delegate, int nParamCount, INetworkMessageInternal *pNetMessage, int nPriority ) = 0;
-	virtual void	UnregisterNetMessageHandlerAbstract( CUtlSlot *nSlot, const CUtlAbstractDelegate &delegate, INetworkMessageInternal *pNetMessage ) = 0;
+	virtual void	RegisterNetMessageHandlerAbstract( CUtlSlot *nSlot, const CUtlAbstractDelegate &delegate, int nParamCount, NetMessageInfo_t *pNetMessage, int nPriority ) = 0;
+	virtual void	UnregisterNetMessageHandlerAbstract( CUtlSlot *nSlot, const CUtlAbstractDelegate &delegate, NetMessageInfo_t *pNetMessage ) = 0;
 	
 	virtual int		GetNumBitsWritten( NetChannelBufType_t bufferType ) const = 0;
 	virtual void	SetDemoRecorder( IDemoRecorderBase *pDemoRecorder ) = 0;
@@ -139,12 +139,9 @@ public:
 	virtual CUtlQueue<CNetMessage *> *GetReceivedMessageQueue() = 0;
 	// AMNOTE: Writes the incoming flow's dropped and late frame percentages, which the peer reads in SetRemoteFramerate
 	virtual void	WriteFrameQualityToTick( CNetMessagePB<CNETMsg_Tick> *pMsg ) = 0;
-	// AMNOTE: 14197 removed SetQueuedMessageLimitConVar (with sv_recvbuf_messages) and added this pair.
-	// Stores the type and, when it is 1, switches the channel to a second set of limits: pushes
-	// SteamNetworkingSockets connection config values 47-50 for the open connection.
-	// Real name unknown.
-	virtual void	SetChannelLimitType( int nType ) = 0;
-	virtual int		GetChannelLimitType( void ) const = 0;
+	// AMNOTE: 1 applies the net_limit_sv_recv_* convars to the connection's receive limits, other values use the defaults
+	virtual void	SetRecvLimitMode( int nMode ) = 0;
+	virtual int		GetRecvLimitMode() const = 0;
 };
 
 

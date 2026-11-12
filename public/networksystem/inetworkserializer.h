@@ -36,58 +36,7 @@ typedef int NetworkMessageId;
 typedef uint8 NetworkGroupId;
 typedef uint NetworkCategoryId;
 
-// Allocates a new message of one type; INetworkMessages::FindOrCreateNetMessage stores it in the message's info
 typedef CNetMessage *( *NetMessageAllocateFn )();
-
-// The registration record INetworkMessages keeps per net message (40 bytes, CNetworkMessages::FindOrCreateNetMessage).
-// Since 14197 (2026-11-11) the engine has no per-message serializer object any more: the "net message handle"
-// that INetworkMessages, IGameEventSystem and INetChannel take and return IS this record, and
-// INetworkMessages::GetNetMessageInfo just returns the handle it is given
-struct NetMessageInfo_t
-{
-	// AMNOTE: Formatted as "%s [%d]" from the proto type name and the id passed to FindOrCreateNetMessage,
-	// e.g. "CUserMessageTextMsg [124]"; FindNetworkMessage compares against the whole string
-	CUtlString m_szName;
-	// Replaces IProtobufBinding::AllocateMessage
-	NetMessageAllocateFn m_pfnAllocate;
-	// Name of the SignonGroup_t passed to FindOrCreateNetMessage ("Generic", "System", "User Messages", ...)
-	CUtlString m_szGroup;
-	NetworkMessageId m_MessageId;
-	// AssociateNetMessageWithChannelCategoryAbstract ORs 1 << category into both, the second only for bRequireHandler
-	int m_nCategories;
-	int m_nRequiredHandlerCategories;
-	NetworkGroupId m_GroupId;
-
-	uint8 m_nBufType : 5; // NetChannelBufType_t
-	// Never sent over the network; its id comes from a local counter rather than from the caller or the name hash
-	uint8 m_bCannotBeNetworked : 1;
-	uint8 m_bUnk001 : 1;
-	// FindOrCreateNetMessage was given SignonGroup_t -1
-	uint8 m_bNoSignonGroup : 1;
-
-	NetChannelBufType_t GetBufType() const { return (NetChannelBufType_t)m_nBufType; }
-};
-
-static_assert( sizeof( void * ) != 8 || ( sizeof( NetMessageInfo_t ) == 40 && offsetof( NetMessageInfo_t, m_MessageId ) == 24
-	&& offsetof( NetMessageInfo_t, m_nCategories ) == 28 && offsetof( NetMessageInfo_t, m_GroupId ) == 36 ), "NetMessageInfo_t layout" );
-
-// The net message handle. Until 14197 this was an abstract class (CNetworkSerializerPB) whose virtuals the helpers
-// below replace; it is now the NetMessageInfo_t itself, so this adds no members and must never be polymorphic:
-// a pointer the engine hands out can be used as either type
-class INetworkMessageInternal : public NetMessageInfo_t
-{
-public:
-	INetworkMessageInternal() = delete;
-	INetworkMessageInternal( const INetworkMessageInternal & ) = delete;
-
-	const char *GetUnscopedName() const { return m_szName.Get(); }
-	NetMessageInfo_t *GetNetMessageInfo() { return this; }
-	const NetMessageInfo_t *GetNetMessageInfo() const { return this; }
-
-	CNetMessage *AllocateMessage() const { return m_pfnAllocate ? m_pfnAllocate() : nullptr; }
-};
-
-static_assert( sizeof( INetworkMessageInternal ) == sizeof( NetMessageInfo_t ), "INetworkMessageInternal must add no members" );
 
 struct NetworkRecipientsFilter_t
 {

@@ -6,6 +6,7 @@
 #endif
 
 #include <limits.h>
+#include <cstddef>
 
 #include <interfaces/interfaces.h>
 
@@ -21,7 +22,6 @@
 #include "const.h"
 
 class CSchemaClassBindingBase;
-class INetworkSerializerBindingBuildFilter;
 struct NetworkableDataType_t;
 struct NetworkFieldResult_t;
 struct NetworkSerializerInfo_t;
@@ -47,11 +47,9 @@ public:
 	virtual void *AsProto() const = 0;
 	virtual void *AsProto2() const = 0;
 
-	// Registers the message type on first use (INetworkMessages::FindOrCreateNetMessage) and returns its handle
-	virtual INetworkMessageInternal *GetNetMessage() const = 0;
+	virtual NetMessageInfo_t *GetNetMessage() const = 0;
 	virtual CNetMessage *CopyConstruct() const = 0;
 	virtual NetworkMessageId GetMessageId() const = 0;
-	// AMNOTE: GetName() was removed in 14197; use GetNetMessage()->GetUnscopedName()
 
 	// Helper function to cast up the abstract message to a concrete CNetMessagePB<T> type.
 	// Doesn't do any validity checks itself!
@@ -87,10 +85,10 @@ private:
 // This is mainly to access the game constructed objects, and not for direct initialization of them
 // since this misses the CNetMessage implementation which requires supplying other proto related info like
 // proto binding object, proto msg id/group, etc.
-// So to allocate the message yourself use INetworkMessageInternal::AllocateMessage() (NetMessageInfo_t::m_pfnAllocate)
+// So to allocate the message yourself use NetMessageInfo_t::AllocateMessage()
 // instead of direct initialization!
 // Example usage:
-// CNetMessagePB<ProtoClass> *msg = INetworkMessageInternal::AllocateMessage()->ToPB<ProtoClass>();
+// CNetMessagePB<ProtoClass> *msg = pNetMessageInfo->AllocateMessage()->ToPB<ProtoClass>();
 // msg->field1( 2 );
 // msg->field2( 3 );
 // IGameEventSystem::PostEventAbstract( ..., msg, ... );
@@ -103,8 +101,47 @@ public:
 	CNetMessagePB( const CNetMessagePB & ) = delete;
 };
 
-// AMNOTE: IProtobufBinding was removed in 14197; NetMessageInfo_t::m_pfnAllocate replaces its AllocateMessage,
-// and NetMessageInfo_t (inetworkserializer.h) is now the message handle itself
+struct NetMessageInfo_t
+{
+	CUtlString m_szName;
+	NetMessageAllocateFn m_pfnAllocateMessage;
+	CUtlString m_szGroup;
+	NetworkMessageId m_MessageId;
+	int m_nCategories;
+
+	// AMNOTE: AssociateNetMessageWithChannelCategoryAbstract ORs the category into it too when bRequireHandler is true.
+	// ConfirmAllMessageHandlersInstalled reports channels in these categories that have no handler registered for the message
+	int m_nRequiredHandlerCategories;
+	NetworkGroupId m_GroupId;
+
+	// AMNOTE: Set by FindOrCreateNetMessage's nDefaultBufferType
+	NetChannelBufType_t m_nBufType : 5;
+	// AMNOTE: Set by FindOrCreateNetMessage's bCannotBeNetworked
+	bool m_bCannotBeNetworked : 1;
+	bool m_bOkayToRedispatch : 1;
+	// AMNOTE: Set when FindOrCreateNetMessage's nGroup is -1
+	uint8 m_unk001 : 1;
+
+	const char *GetName() const { return m_szName.Get(); }
+	const char *GetGroupName() const { return m_szGroup.Get(); }
+	NetworkMessageId GetMessageId() const { return m_MessageId; }
+	NetworkGroupId GetGroupId() const { return m_GroupId; }
+	int GetCategoryMask() const { return m_nCategories; }
+	NetChannelBufType_t GetBufType() const { return m_nBufType; }
+	bool CannotBeNetworked() const { return m_bCannotBeNetworked; }
+	bool OkayToRedispatch() const { return m_bOkayToRedispatch; }
+
+	CNetMessage *AllocateMessage() const { return m_pfnAllocateMessage(); }
+};
+
+static_assert( sizeof( void * ) != 8 || ( sizeof( NetMessageInfo_t ) == 40 && offsetof( NetMessageInfo_t, m_MessageId ) == 24
+	&& offsetof( NetMessageInfo_t, m_nCategories ) == 28 && offsetof( NetMessageInfo_t, m_GroupId ) == 36 ), "NetMessageInfo_t layout" );
+
+// Fork compatibility: this fork called the 14197 net message handle INetworkMessageInternal (a view over
+// NetMessageInfo_t) before upstream made NetMessageInfo_t the handle itself. Kept so code written against the
+// fork's name still builds. It is the same type: GetUnscopedName() is now GetName(), and the handle is its own
+// NetMessageInfo_t, so GetNetMessageInfo() is gone.
+using INetworkMessageInternal = NetMessageInfo_t;
 
 enum NetworkFieldChangedDelegateType_t
 {
@@ -186,20 +223,22 @@ abstract_class INetworkMessages
 public:
 	virtual void RegisterNetworkCategory(NetworkCategoryId nCategoryId, char const *szDebugName) = 0;
 
-	virtual void AssociateNetMessageWithChannelCategoryAbstract(INetworkMessageInternal *pNetMessage, NetworkCategoryId nCategoryId, bool bRequireHandler) = 0;
+	virtual void AssociateNetMessageWithChannelCategoryAbstract(NetMessageInfo_t *pNetMessage, NetworkCategoryId nCategoryId, bool bRequireHandler) = 0;
 
 	virtual bool Serialize(bf_write &pBuf, const CNetMessage *pData) = 0;
 
-	// AMNOTE: nUnk001 is new in 14197 (passed through to the unserializer); pErrorReason may be nullptr
+	// AMNOTE: nUnk001 is new in 14197 and passed through to the unserializer (CNetworkMessages slot 3 reads it from
+	// ecx on linux, r9d on windows, with pErrorReason in r8 / on the stack); pErrorReason may be nullptr
 	virtual bool UnserializeMessageInternal( bf_read &pBuf, CNetMessage *pData, int nUnk001, CUtlString *pErrorReason ) = 0;
 	virtual bool SerializeMessageInternal( bf_write &pBuf, const CNetMessage *pData ) = 0;
 
 	// Returns nullptr if failed to unserialize, reason is written to err_reason
-	// AMNOTE: nUnk001 is new in 14197, passed through to UnserializeMessageInternal
+	// AMNOTE: nUnk001 is new in 14197, passed through to UnserializeMessageInternal (slot 5 reads it from edx on
+	// linux, r8d on windows, with err_reason in rcx / r9)
 	virtual CNetMessage *UnserializeFromStream( bf_read &pBuf, int nUnk001, CUtlString &err_reason ) = 0;
 
 	// AMNOTE: SerializeAbstract, AllocateAndCopyConstructNetMessageAbstract and DeallocateNetMessageAbstract were
-	// removed in 14197. Allocate with INetworkMessageInternal::AllocateMessage(), copy with CNetMessage::CopyConstruct()
+	// removed in 14197. Allocate with NetMessageInfo_t::AllocateMessage(), copy with CNetMessage::CopyConstruct()
 	// and free with delete (the message's virtual destructor)
 
 	// For both, the last two callbacks are used instead of the first serialize and unserialize callbacks while
@@ -209,10 +248,10 @@ public:
 	virtual void *RegisterNetworkArrayFieldSerializer(char const *szName, NetworkSerializationMode_t mode, NetworkFieldSerializeBufferCB, NetworkFieldUnserializeBufferCB, NetworkFieldInfoCB,
 		NetworkFieldMetaInfoCB, NetworkFieldSerializeBufferCB, NetworkFieldUnserializeBufferCB) = 0;
 
-	virtual NetMessageInfo_t *GetNetMessageInfo(INetworkMessageInternal *pNetMessage) = 0;
+	virtual NetMessageInfo_t *GetNetMessageInfo(NetMessageInfo_t *pNetMessage) = 0;
 
-	virtual INetworkMessageInternal* FindNetworkMessage(char const *szName) = 0;
-	virtual INetworkMessageInternal* FindNetworkMessagePartial(char const *szPartialName) = 0;
+	virtual NetMessageInfo_t* FindNetworkMessage(char const *szName) = 0;
+	virtual NetMessageInfo_t* FindNetworkMessagePartial(char const *szPartialName) = 0;
 
 	virtual NetworkGroupId FindNetworkGroup(char const *szGroup, bool bCreateIfNotFound = false) = 0;
 	virtual int GetNetworkGroupCount() = 0;
@@ -230,10 +269,10 @@ public:
 	// AMNOTE: The callback runs for fields with MNetworkChangeTag metadata
 	virtual void RegisterNetworkChangeTagCallback(const NetworkChangeTagDelegate_t &callback) = 0;
 
-	// Moved here from the third slot in 14197. nMessageId <= 0 auto-assigns the id (from the name hash, or for
-	// bCannotBeNetworked messages from a local counter); nGroup is a SignonGroup_t and becomes m_szGroup's name.
-	// Returns nullptr when registering a new message after AllowAdditionalMessageRegistration( false )
-	virtual INetworkMessageInternal *FindOrCreateNetMessage( int nMessageId, NetMessageAllocateFn pfnAllocate, int nGroup, NetChannelBufType_t nBufType, bool bUnk001 = false, bool bCannotBeNetworked = false ) = 0;
+	// Passing nMessasgeId as -1 would auto-assign the id even if bCannotBeNetworked is false based on the message name hash.
+	// AMNOTE: bCannotBeNetworked marks the message as never sent over the network, Serialize rejects it,
+	// and its nMessageId is replaced by the next free id when 0 or less
+	virtual NetMessageInfo_t *FindOrCreateNetMessage(int nMessageId, NetMessageAllocateFn pfnAllocateMessage, int nGroup, NetChannelBufType_t nDefaultBufferType, bool bOkayToRedispatch = false, bool bCannotBeNetworked = false) = 0;
 
 	// szCallbackName is the name fields refer to in their MNetworkChangeCallback metadata; registering it twice is a fatal error.
 	// AMNOTE: szClassName is stored with the callback but not used
@@ -247,7 +286,7 @@ public:
 
 	virtual void RegisterFieldChangeCallbackPriority(int nPriority) = 0;
 
-	virtual INetworkMessageInternal *FindNetworkMessageById(int nMessageId) = 0;
+	virtual NetMessageInfo_t *FindNetworkMessageById(int nMessageId) = 0;
 
 	virtual void SetIsForServer(bool bIsForServer) = 0;
 	virtual bool GetIsForServer() = 0;
