@@ -6,7 +6,6 @@
 #endif
 
 #include <limits.h>
-#include <cstddef>
 
 #include <interfaces/interfaces.h>
 
@@ -119,8 +118,9 @@ struct NetMessageInfo_t
 	// AMNOTE: Set by FindOrCreateNetMessage's bCannotBeNetworked
 	bool m_bCannotBeNetworked : 1;
 	bool m_bOkayToRedispatch : 1;
-	// AMNOTE: Set when FindOrCreateNetMessage's nGroup is -1
-	uint8 m_unk001 : 1;
+	// AMNOTE: Set when FindOrCreateNetMessage's nGroup is SIGNONGROUP_INVALID: net channels don't count the message in
+	// their per-group message stats (INetChannel::UpdateMessageStats)
+	bool m_bExcludeFromMessageStats : 1;
 
 	const char *GetName() const { return m_szName.Get(); }
 	const char *GetGroupName() const { return m_szGroup.Get(); }
@@ -130,18 +130,33 @@ struct NetMessageInfo_t
 	NetChannelBufType_t GetBufType() const { return m_nBufType; }
 	bool CannotBeNetworked() const { return m_bCannotBeNetworked; }
 	bool OkayToRedispatch() const { return m_bOkayToRedispatch; }
+	bool ExcludeFromMessageStats() const { return m_bExcludeFromMessageStats; }
 
 	CNetMessage *AllocateMessage() const { return m_pfnAllocateMessage(); }
 };
 
-static_assert( sizeof( void * ) != 8 || ( sizeof( NetMessageInfo_t ) == 40 && offsetof( NetMessageInfo_t, m_MessageId ) == 24
-	&& offsetof( NetMessageInfo_t, m_nCategories ) == 28 && offsetof( NetMessageInfo_t, m_GroupId ) == 36 ), "NetMessageInfo_t layout" );
-
-// Fork compatibility: this fork called the 14197 net message handle INetworkMessageInternal (a view over
-// NetMessageInfo_t) before upstream made NetMessageInfo_t the handle itself. Kept so code written against the
-// fork's name still builds. It is the same type: GetUnscopedName() is now GetName(), and the handle is its own
-// NetMessageInfo_t, so GetNetMessageInfo() is gone.
-using INetworkMessageInternal = NetMessageInfo_t;
+enum SignonGroup_t
+{
+	SIGNONGROUP_INVALID = -1,
+	SIGNONGROUP_GENERIC = 0,
+	SIGNONGROUP_LOCAL_PLAYER,
+	SIGNONGROUP_OTHER_PLAYERS,
+	SIGNONGROUP_ENTITIES,
+	SIGNONGROUP_SOUNDS,
+	SIGNONGROUP_EVENTS,
+	SIGNONGROUP_VOICE,
+	SIGNONGROUP_STRING_TABLE,
+	SIGNONGROUP_MOVE,
+	SIGNONGROUP_STRING_COMMAND,
+	SIGNONGROUP_SIGNON,
+	SIGNONGROUP_SYSTEM,
+	SIGNONGROUP_DECALS,
+	SIGNONGROUP_USER_MESSAGES,
+	SIGNONGROUP_CLIENT_MESSAGES,
+	SIGNONGROUP_SPAWN_GROUPS,
+	SIGNONGROUP_GAME_ENGINE,
+	SIGNONGROUP_HLTV_REPLAY,
+};
 
 enum NetworkFieldChangedDelegateType_t
 {
@@ -227,19 +242,13 @@ public:
 
 	virtual bool Serialize(bf_write &pBuf, const CNetMessage *pData) = 0;
 
-	// AMNOTE: nUnk001 is new in 14197 and passed through to the unserializer (CNetworkMessages slot 3 reads it from
-	// ecx on linux, r9d on windows, with pErrorReason in r8 / on the stack); pErrorReason may be nullptr
-	virtual bool UnserializeMessageInternal( bf_read &pBuf, CNetMessage *pData, int nUnk001, CUtlString *pErrorReason ) = 0;
+	// AMNOTE: With NET_RECV_LIMIT_MODE_CLIENT, a message larger than its maximum size (its maximum_size_bytes option, else
+	// 1500 bytes) is let through, logged or rejected as net_message_size_enforce says
+	virtual bool UnserializeMessageInternal( bf_read &pBuf, CNetMessage *pData, NetRecvLimitMode_t nRecvLimitMode, CUtlString *err_reason ) = 0;
 	virtual bool SerializeMessageInternal( bf_write &pBuf, const CNetMessage *pData ) = 0;
 
 	// Returns nullptr if failed to unserialize, reason is written to err_reason
-	// AMNOTE: nUnk001 is new in 14197, passed through to UnserializeMessageInternal (slot 5 reads it from edx on
-	// linux, r8d on windows, with err_reason in rcx / r9)
-	virtual CNetMessage *UnserializeFromStream( bf_read &pBuf, int nUnk001, CUtlString &err_reason ) = 0;
-
-	// AMNOTE: SerializeAbstract, AllocateAndCopyConstructNetMessageAbstract and DeallocateNetMessageAbstract were
-	// removed in 14197. Allocate with NetMessageInfo_t::AllocateMessage(), copy with CNetMessage::CopyConstruct()
-	// and free with delete (the message's virtual destructor)
+	virtual CNetMessage *UnserializeFromStream(bf_read &pBuf, NetRecvLimitMode_t nRecvLimitMode, CUtlString &err_reason) = 0;
 
 	// For both, the last two callbacks are used instead of the first serialize and unserialize callbacks while
 	// net_validatemessages is on; null ones fall back to them
@@ -272,7 +281,7 @@ public:
 	// Passing nMessasgeId as -1 would auto-assign the id even if bCannotBeNetworked is false based on the message name hash.
 	// AMNOTE: bCannotBeNetworked marks the message as never sent over the network, Serialize rejects it,
 	// and its nMessageId is replaced by the next free id when 0 or less
-	virtual NetMessageInfo_t *FindOrCreateNetMessage(int nMessageId, NetMessageAllocateFn pfnAllocateMessage, int nGroup, NetChannelBufType_t nDefaultBufferType, bool bOkayToRedispatch = false, bool bCannotBeNetworked = false) = 0;
+	virtual NetMessageInfo_t *FindOrCreateNetMessage(int nMessageId, NetMessageAllocateFn pfnAllocateMessage, SignonGroup_t nGroup, NetChannelBufType_t nDefaultBufferType, bool bOkayToRedispatch, bool bCannotBeNetworked) = 0;
 
 	// szCallbackName is the name fields refer to in their MNetworkChangeCallback metadata; registering it twice is a fatal error.
 	// AMNOTE: szClassName is stored with the callback but not used
